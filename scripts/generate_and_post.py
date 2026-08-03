@@ -2,12 +2,9 @@ import os
 import requests
 from google import genai
 
-# 1. Initialize Gemini with Vertex AI on GCP
+# 1. Initialize Gemini using the standard API Key client
 client = genai.Client(
-    api_key=os.environ["GEMINI_API_KEY"],
-    vertexai=True,
-    project="project-cce03172-d052-4459-b4d",
-    location="us-central1"
+    api_key=os.environ["GEMINI_API_KEY"]
 )
 
 # 2. Prompt Gemini for social content
