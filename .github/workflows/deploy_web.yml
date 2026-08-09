@@ -3,7 +3,7 @@ name: Deploy Flutter Web
 on:
   push:
     branches:
-      - prod   # ✅ changed from main → prod
+      - prod 
 
 permissions:
   contents: write
