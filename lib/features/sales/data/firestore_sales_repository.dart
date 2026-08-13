@@ -15,12 +15,19 @@ import '../domain/sales_repository.dart';
 
 /// Store-scoped Firestore implementation of [SalesRepository] (carts + checkout).
 class FirestoreSalesRepository implements SalesRepository {
-  FirestoreSalesRepository(this._db, this._storeId)
-      : _inventory = FirestoreInventoryRepository(_db, _storeId),
+  FirestoreSalesRepository(this._db, this._storeId,
+      {bool customerMode = false})
+      : _customerMode = customerMode,
+        _inventory = FirestoreInventoryRepository(_db, _storeId),
         _warehouse = FirestoreWarehouseRepository(_db, _storeId);
 
   final FirebaseFirestore _db;
   final String _storeId;
+
+  /// True when driven by a public-storefront customer session. Such a session
+  /// holds a `customer_cart` token that is scoped to products/carts/cart_items
+  /// only, so stock and warehouse lookups must be skipped (see [_stockContext]).
+  final bool _customerMode;
   final FirestoreInventoryRepository _inventory;
   final FirestoreWarehouseRepository _warehouse;
 
@@ -633,6 +640,14 @@ class FirestoreSalesRepository implements SalesRepository {
 
   Future<({bool track, int warehouseId})> _stockContext(
       int? cartWarehouseId) async {
+    // A customer_cart token may only read products/carts/cart_items, so
+    // `settings/inventory`, `warehouses` and `inventory` all return
+    // permission-denied — and `defaultWarehouseId()` would even try to create a
+    // warehouse. Report "not tracking" so `_assertStock` returns without any
+    // read; the store user's checkout re-validates every line against stock.
+    if (_customerMode) {
+      return (track: false, warehouseId: cartWarehouseId ?? 0);
+    }
     final mode = await _warehouse.getMode();
     final warehouseId =
         cartWarehouseId ?? await _warehouse.defaultWarehouseId();

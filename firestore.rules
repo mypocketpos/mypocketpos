@@ -17,61 +17,64 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/stores/$(storeId)/users/$(request.auth.uid));
     }
 
-    // One email = one store
-    match /email_index/{emailKey} {
-      allow get: if isSignedIn();
-
-      allow create: if isSignedIn()
-        && request.resource.data.uid == request.auth.uid;
-
-      allow delete: if isSignedIn()
-        && resource.data.uid == request.auth.uid;
-
-      allow update: if false;
+    // Explicitly forces both sides to STRING to prevent Type Cast mismatch errors
+    function isCustomerCartToken(storeId, cartId) {
+      return isSignedIn()
+        && request.auth.token.role == 'customer_cart'
+        && request.auth.token.storeId == storeId
+        && string(request.auth.token.cartId) == string(cartId);
     }
 
-    // User -> store mapping
-    match /user_store_index/{uid} {
-      allow read: if isSignedIn() && request.auth.uid == uid;
-      allow write: if isSignedIn() && request.auth.uid == uid;
-    }
-
-    // Platform admins
-    match /platform_admins/{uid} {
-      allow get: if isSignedIn() && request.auth.uid == uid;
-      allow list, write: if isPlatformAdmin();
-    }
-
-    // Platform config
-    match /platform_config/{docId} {
-      allow read, write: if isPlatformAdmin();
-    }
-
-    // Stores
     match /stores/{storeId} {
 
-      allow create: if isSignedIn()
-        && request.resource.data.status == 'pending'
-        && request.resource.data.ownerUid == request.auth.uid;
+      allow get: if isStoreMember(storeId) 
+                 || isPlatformAdmin() 
+                 || (isSignedIn() && request.auth.token.role == 'customer_cart');
 
-      allow get: if isStoreMember(storeId) || isPlatformAdmin();
-      allow list: if isPlatformAdmin();
-
-      allow update: if isPlatformAdmin();
-
-      // Store users
-      match /users/{uid} {
-        allow read: if isStoreMember(storeId) || isPlatformAdmin();
-
-        allow create: if isSignedIn()
-          && request.auth.uid == uid;
-
-        allow update, delete: if isStoreMember(storeId);
+      // PRODUCTS
+      match /products/{productId} {
+        allow read: if isStoreMember(storeId) 
+                   || isPlatformAdmin() 
+                   || (isSignedIn() && request.auth.token.role == 'customer_cart');
+        allow write: if isStoreMember(storeId) || isPlatformAdmin();
       }
 
-      // All other store data
+      // CARTS
+      match /carts/{cartId} {
+        allow read: if isStoreMember(storeId) 
+                   || isPlatformAdmin() 
+                   || isCustomerCartToken(storeId, cartId);
+
+        allow create, update, delete: if isStoreMember(storeId) 
+                                       || isCustomerCartToken(storeId, cartId);
+      }
+
+      // CART ITEMS (Where Customer Add/Remove was failing)
+      match /cart_items/{itemId} {
+        // Read items belonging to the customer's cart
+        allow read: if isStoreMember(storeId) 
+                   || isPlatformAdmin() 
+                   || (isSignedIn() 
+                       && request.auth.token.role == 'customer_cart' 
+                       && string(request.auth.token.cartId) == string(resource.data.cartId));
+
+        // Create item: verify incoming request payload's cartId matches token's cartId
+        allow create: if isStoreMember(storeId) 
+                       || (isSignedIn() 
+                           && request.auth.token.role == 'customer_cart' 
+                           && string(request.auth.token.storeId) == string(storeId)
+                           && string(request.auth.token.cartId) == string(request.resource.data.cartId));
+
+        // Update/Delete item: verify existing document's cartId matches token's cartId
+        allow update, delete: if isStoreMember(storeId) 
+                               || (isSignedIn() 
+                                   && request.auth.token.role == 'customer_cart' 
+                                   && string(request.auth.token.storeId) == string(storeId)
+                                   && string(request.auth.token.cartId) == string(resource.data.cartId));
+      }
+
       match /{document=**} {
-        allow read, write: if isStoreMember(storeId);
+        allow read, write: if isStoreMember(storeId) || isPlatformAdmin();
       }
     }
   }
