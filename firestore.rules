@@ -24,6 +24,18 @@ service cloud.firestore {
         && request.auth.token.storeId == storeId
         && string(request.auth.token.cartId) == string(cartId);
     }
+    
+    // PLATFORM ADMINS
+    match /platform_admins/{uid} {
+      allow get: if isSignedIn()
+                 && request.auth.uid == uid;
+
+      allow list, write: if isPlatformAdmin();
+    }
+    // Platform config — platform admins only.
+    match /platform_config/{docId} {
+      allow read, write: if isPlatformAdmin();
+    }
 
     match /stores/{storeId} {
 

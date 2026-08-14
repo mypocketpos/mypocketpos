@@ -985,17 +985,54 @@ class _CartDetailsState extends ConsumerState<_CartDetails> {
     final paidCtrl = TextEditingController(text: summary.toStringAsFixed(2));
 
     final cart = await ref.read(salesRepositoryProvider).getCart(widget.cartId);
+
     Customer? customer;
+
+// These are stored directly in the Firestore cart for customer-created carts.
+    String cartCustomerMobile = '';
+    String cartCustomerName = '';
+
     if (cart?.customerId != null) {
+      // Owner-created cart / already-linked customer.
       customer =
           await ref.read(customerRepositoryProvider).getById(cart!.customerId!);
+    } else {
+      // Customer-created cart.
+      // The local Drift Cart doesn't contain customerMobile/customerName,
+      // so read them directly from the Firestore cart document.
+      final storeId = ref.read(activeStoreIdProvider);
+
+      if (storeId != null && storeId.isNotEmpty) {
+        final cartSnap = await storeCollection(
+          ref.read(firestoreProvider),
+          storeId,
+          'carts',
+        ).doc('${widget.cartId}').get();
+
+        final data = cartSnap.data();
+
+        if (data != null && data['source'] == 'customer') {
+          cartCustomerMobile =
+              (data['customerMobile'] as String?)?.trim() ?? '';
+
+          cartCustomerName = (data['customerName'] as String?)?.trim() ??
+              (data['name'] as String?)?.trim() ??
+              '';
+        }
+      }
     }
 
-    final customerMobileCtrl =
-        TextEditingController(text: customer?.mobile ?? '');
-    final customerNameCtrl = TextEditingController(text: customer?.name ?? '');
-    final customerAddressCtrl =
-        TextEditingController(text: customer?.address ?? '');
+    final customerMobileCtrl = TextEditingController(
+      text: customer?.mobile ?? cartCustomerMobile,
+    );
+
+    final customerNameCtrl = TextEditingController(
+      text: customer?.name ?? cartCustomerName,
+    );
+
+    final customerAddressCtrl = TextEditingController(
+      text: customer?.address ?? '',
+    );
 
     String paymentMode = 'cash';
 

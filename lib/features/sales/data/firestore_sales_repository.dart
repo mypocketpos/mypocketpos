@@ -15,8 +15,7 @@ import '../domain/sales_repository.dart';
 
 /// Store-scoped Firestore implementation of [SalesRepository] (carts + checkout).
 class FirestoreSalesRepository implements SalesRepository {
-  FirestoreSalesRepository(this._db, this._storeId,
-      {bool customerMode = false})
+  FirestoreSalesRepository(this._db, this._storeId, {bool customerMode = false})
       : _customerMode = customerMode,
         _inventory = FirestoreInventoryRepository(_db, _storeId),
         _warehouse = FirestoreWarehouseRepository(_db, _storeId);
@@ -499,33 +498,69 @@ class FirestoreSalesRepository implements SalesRepository {
     String? customerMobile,
     String? customerAddress,
   }) async {
-    final cart = await getCart(cartId);
-    if (cart == null) throw Exception('Cart not found');
+    // Read the raw Firestore cart document as well as the local Cart model.
+    // The Drift Cart model does not contain customerName/customerMobile, but
+    // customer-created carts store those values directly in Firestore.
+    final cartDoc = await cacheSafeDoc(_carts, '$cartId');
+    if (cartDoc == null || !cartDoc.exists) {
+      throw Exception('Cart not found');
+    }
+    final cart = cartFromDoc(cartDoc);
+    final cartData = cartDoc.data();
+
     final itemsSnap = await _cartItems.where('cartId', isEqualTo: cartId).get();
     if (itemsSnap.docs.isEmpty) throw Exception('Cart is empty');
     final items = itemsSnap.docs.map(cartItemFromDoc).toList();
 
     // Customer upsert.
+    // Owner-created carts normally already have customerId. Customer-created
+    // carts may have customerId == null, but they contain customerName and
+    // customerMobile in the Firestore cart document. Use those as fallback.
     int? customerId = cart.customerId;
-    if (customerMobile != null && customerMobile.isNotEmpty) {
+
+    final cartCustomerMobile =
+        (cartData?['customerMobile'] as String?)?.trim() ?? '';
+
+    final cartCustomerName = (cartData?['customerName'] as String?)?.trim() ??
+        (cartData?['name'] as String?)?.trim() ??
+        '';
+    final effectiveMobile =
+        (customerMobile != null && customerMobile.trim().isNotEmpty)
+            ? customerMobile.trim()
+            : cartCustomerMobile;
+
+    final effectiveName =
+        (customerName != null && customerName.trim().isNotEmpty)
+            ? customerName.trim()
+            : cartCustomerName;
+
+    final effectiveAddress =
+        (customerAddress != null && customerAddress.trim().isNotEmpty)
+            ? customerAddress.trim()
+            : null;
+
+    if (customerId == null && effectiveMobile.isNotEmpty) {
       try {
         final existing = await _customers
-            .where('mobile', isEqualTo: customerMobile)
+            .where('mobile', isEqualTo: effectiveMobile)
             .limit(1)
             .get();
         if (existing.docs.isNotEmpty) {
           customerId = int.tryParse(existing.docs.first.id);
-          if (customerName != null && customerName.isNotEmpty) {
-            _write(existing.docs.first.reference.set(
-                {'name': customerName, 'address': customerAddress},
-                SetOptions(merge: true)));
+
+          if (effectiveName.isNotEmpty || effectiveAddress != null) {
+            _write(existing.docs.first.reference.set({
+              if (effectiveName.isNotEmpty) 'name': effectiveName,
+              if (effectiveAddress != null) 'address': effectiveAddress,
+            }, SetOptions(merge: true)));
           }
-        } else if (customerName != null && customerName.isNotEmpty) {
+        } else if (effectiveName.isNotEmpty) {
           customerId = newIntId();
+
           _write(_customers.doc('$customerId').set({
-            'name': customerName,
-            'mobile': customerMobile,
-            'address': customerAddress,
+            'name': effectiveName,
+            'mobile': effectiveMobile,
+            'address': effectiveAddress,
             'loyaltyPoints': 0,
           }));
         }
@@ -613,8 +648,17 @@ class FirestoreSalesRepository implements SalesRepository {
       'referenceNo': null,
       'paidAt': FieldValue.serverTimestamp(),
     });
-    batch.set(_carts.doc('$cartId'), {'status': 'completed'},
-        SetOptions(merge: true));
+    batch.set(
+      _carts.doc('$cartId'),
+      {
+        'status': 'completed',
+        'customerId': customerId,
+        if (effectiveName.isNotEmpty) 'customerName': effectiveName,
+        if (effectiveMobile.isNotEmpty) 'customerMobile': effectiveMobile,
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
     // Offline-first: the batch is applied to the local cache immediately (so the
     // sale, its items and the completed-cart status are all visible at once) and
     // syncs on reconnect. Do NOT await server acknowledgement — that would hang
