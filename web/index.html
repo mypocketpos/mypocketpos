@@ -136,7 +136,19 @@
     .nav-links a{color:var(--muted);font-weight:500}
     .nav-links a:hover{color:var(--ink)}
     .nav-cta{display:flex;gap:10px}
-    @media(max-width:760px){.nav-links .link{display:none}}
+    .nav-toggle{display:none;background:transparent;border:1.5px solid var(--line);border-radius:10px;padding:8px 10px;cursor:pointer;color:var(--brand);line-height:0}
+    .nav-toggle span{display:block;width:20px;height:2px;background:currentColor;border-radius:2px}
+    .nav-toggle span+span{margin-top:4px}
+    @media(max-width:760px){
+      .nav-toggle{display:block}
+      /* Collapse the links into a panel under the sticky header instead of
+         hiding them outright — the hamburger toggles .open. */
+      .nav-links{display:none;position:absolute;top:100%;left:0;right:0;flex-direction:column;align-items:stretch;gap:0;background:var(--bg);border-bottom:1px solid var(--line);box-shadow:0 12px 24px rgba(0,0,0,.08);padding:8px 20px 16px}
+      .nav-links.open{display:flex}
+      .nav-links .link{padding:12px 2px;border-bottom:1px solid var(--line)}
+      .nav-cta{flex-direction:column;gap:10px;margin-top:14px}
+      .nav-cta .btn{width:100%;justify-content:center}
+    }
 
     /* Hero */
     .hero{padding:70px 0 40px;display:grid;grid-template-columns:1.1fr .9fr;gap:40px;align-items:center}
@@ -205,7 +217,10 @@
     <header>
       <div class="wrap nav">
         <div class="logo"><img class="dot" src="icons/logo-mark.svg" alt="Pocket POS logo" width="30" height="30"> Pocket POS</div>
-        <nav class="nav-links">
+        <button class="nav-toggle" id="navToggle" onclick="toggleNav()" aria-label="Menu" aria-expanded="false" aria-controls="navLinks">
+          <span></span><span></span><span></span>
+        </button>
+        <nav class="nav-links" id="navLinks">
           <a class="link" href="#features">Features</a>
           <a class="link" href="#business">Businesses</a>
           <a class="link" href="#how">How it works</a>
@@ -351,6 +366,28 @@
       var l = document.getElementById('landing');
       if (l) l.style.display = 'none';
     }
+    // Mobile nav (<=760px): the hamburger opens the collapsed link panel.
+    function toggleNav(force) {
+      var links = document.getElementById('navLinks');
+      var btn = document.getElementById('navToggle');
+      if (!links) return;
+      var open = force === undefined ? !links.classList.contains('open') : force;
+      links.classList.toggle('open', open);
+      if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    // Widening past the breakpoint restores the desktop row, so drop .open —
+    // otherwise it lingers and the panel reappears expanded on the way back.
+    if (window.matchMedia) {
+      var wide = window.matchMedia('(min-width:761px)');
+      var onWide = function (e) { if (e.matches) toggleNav(false); };
+      if (wide.addEventListener) wide.addEventListener('change', onWide);
+      else wide.addListener(onWide); // Safari < 14
+    }
+    // Close after picking a link so the in-page anchor target is visible.
+    Array.prototype.forEach.call(
+      document.querySelectorAll('#navLinks a, #navLinks button'),
+      function (el) { el.addEventListener('click', function () { toggleNav(false); }); }
+    );
     // Deep-link from the blog / marketing pages: "/?app=1" opens the app
     // directly instead of showing the landing overlay first.
     if (window.location.search.indexOf('app=1') !== -1) {
