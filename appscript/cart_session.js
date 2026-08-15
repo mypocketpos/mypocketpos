@@ -340,21 +340,29 @@ function _mintCustomToken(uid, claims) {
   };
 
   var payload = {
-    iss: SA_EMAIL,
-    sub: SA_EMAIL,
-    aud: 'https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit',
-    iat: now,
-    exp: now + 3600,
-    uid: String(uid)
-  };
+  iss: SA_EMAIL,
+  sub: SA_EMAIL,
+  aud: 'https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit',
+  iat: now,
+  exp: now + 3600,
+  uid: String(uid),
 
-  // Firebase custom claims MUST be top-level JWT claims.
+  claims: {
+    storeId: String(claims.storeId),
+    cartId: String(claims.cartId),
+    role: String(claims.role)
+  }
+};
+
+  // IMPORTANT:
+  // Firebase custom claims must be TOP-LEVEL JWT claims.
   Object.keys(claims || {}).forEach(function(key) {
     payload[key] = claims[key];
   });
 
-  Logger.log('CUSTOM TOKEN PAYLOAD:');
+  Logger.log('========== CUSTOM TOKEN PAYLOAD ==========');
   Logger.log(JSON.stringify(payload, null, 2));
+  Logger.log('==========================================');
 
   var b64Header =
     Utilities.base64EncodeWebSafe(

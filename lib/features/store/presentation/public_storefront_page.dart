@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -31,6 +32,7 @@ class _PublicStorefrontPageState extends ConsumerState<PublicStorefrontPage> {
   String? _activeStoreId;
   String? _storeName;
   int? _cartId;
+  bool _cartClosed = false;
 
   // Keep these streams stable across cart document updates. Recreating the
   // streams inside build() causes the product list to unsubscribe/resubscribe
@@ -40,8 +42,14 @@ class _PublicStorefrontPageState extends ConsumerState<PublicStorefrontPage> {
   String? _streamStoreId;
   int? _streamCartId;
 
+  // Listen to the cart document only for lifecycle changes (completed/deleted).
+  // Normal cart updates such as updatedAt must NOT rebuild the storefront.
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _cartSubscription;
+
   @override
   void dispose() {
+    _cartSubscription?.cancel();
+
     _storeId.dispose();
     _customerName.dispose();
     _customerMobile.dispose();
@@ -56,6 +64,49 @@ class _PublicStorefrontPageState extends ConsumerState<PublicStorefrontPage> {
   FirestoreSalesRepository _salesRepo(String storeId) {
     return FirestoreSalesRepository(ref.read(firestoreProvider), storeId,
         customerMode: true);
+  }
+
+  Future<void> _watchCart(int cartId, String storeId) async {
+    await _cartSubscription?.cancel();
+
+    final fs = ref.read(firestoreProvider);
+
+    _cartSubscription = storeCollection(
+      fs,
+      storeId,
+      'carts',
+    ).doc('$cartId').snapshots().listen((snapshot) {
+      if (!mounted) return;
+
+      // Owner deleted the cart.
+      if (!snapshot.exists) {
+        if (!_cartClosed) {
+          setState(() {
+            _cartClosed = true;
+          });
+        }
+        return;
+      }
+
+      final data = snapshot.data();
+      final status = data?['status']?.toString().trim().toLowerCase();
+
+      // Owner completed the cart.
+      if (status == 'completed') {
+        if (!_cartClosed) {
+          setState(() {
+            _cartClosed = true;
+          });
+        }
+        return;
+      }
+
+      // Cart is active.
+      //
+      // IMPORTANT: Do not call setState() here. Normal changes such as
+      // updatedAt after adding/changing an item must not rebuild the
+      // entire storefront, otherwise the product list flickers.
+    });
   }
 
   Future<void> _startShopping() async {
@@ -107,7 +158,12 @@ class _PublicStorefrontPageState extends ConsumerState<PublicStorefrontPage> {
       final auth = FirebaseAuth.instance;
       await auth.signInWithCustomToken(customToken);
       final user = auth.currentUser;
-      final idTokenResult = await user!.getIdTokenResult(true);
+
+      if (user == null) {
+        throw Exception('Unable to create a customer session.');
+      }
+
+      final idTokenResult = await user.getIdTokenResult(true);
 
       debugPrint('========== CUSTOMER CART AUTH DEBUG ==========');
       debugPrint('UID: ${user.uid}');
@@ -116,11 +172,10 @@ class _PublicStorefrontPageState extends ConsumerState<PublicStorefrontPage> {
       debugPrint('Role claim: ${idTokenResult.claims?['role']}');
       debugPrint('ALL CLAIMS: ${idTokenResult.claims}');
       debugPrint('==============================================');
-      if (user == null) {
-        throw Exception('Unable to create a customer session.');
-      }
-
-      // ── Step 3: Write the pre-allocated cart document ────────────────────
+      // ── Step 3: Create the Firestore cart ONLY now ───────────────────────
+      // Apps Script does not create the cart. Therefore if the HTTP request
+      // fails before this point, no orphan cart is visible to the owner.
+      // This is the single customer-cart creation point.
       final fs = ref.read(firestoreProvider);
       await storeCollection(fs, storeId, 'carts').doc('$cartId').set({
         'name': customerName,
@@ -136,8 +191,11 @@ class _PublicStorefrontPageState extends ConsumerState<PublicStorefrontPage> {
         'createdByUid': user.uid,
       });
 
-      // A new cart needs fresh cart-item stream, but the product stream can
-      // be reused for the same store.
+      // Stop watching the previous cart before switching to the new cart.
+      await _cartSubscription?.cancel();
+      _cartSubscription = null;
+
+      // A new cart needs a fresh cart-item stream.
       _streamStoreId = null;
       _streamCartId = null;
       _productsStream = null;
@@ -147,7 +205,12 @@ class _PublicStorefrontPageState extends ConsumerState<PublicStorefrontPage> {
         _activeStoreId = storeId;
         _storeName = storeName;
         _cartId = cartId;
+        _cartClosed = false;
       });
+
+      // Watch the cart only for lifecycle changes:
+      // owner completion or owner deletion.
+      await _watchCart(cartId, storeId);
     } catch (e) {
       setState(() {
         _error = e.toString().replaceFirst('Exception: ', '');
@@ -199,6 +262,227 @@ class _PublicStorefrontPageState extends ConsumerState<PublicStorefrontPage> {
     await _salesRepo(storeId).removeItem(item.id);
   }
 
+  Widget _buildActiveStorefront(
+    BuildContext context,
+    String storeId,
+    int cartId,
+  ) {
+    // Keep these stream instances stable for the current store/cart.
+    if (_streamStoreId != storeId || _streamCartId != cartId) {
+      _streamStoreId = storeId;
+      _streamCartId = cartId;
+      _productsStream = _productRepo(storeId).watchAll();
+      _cartItemsStream = _salesRepo(storeId).watchCartItems(cartId);
+    }
+
+    final products = _productsStream!;
+    final items = _cartItemsStream!;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final narrow = constraints.maxWidth < 900;
+
+        final productPane = StreamBuilder<List<Product>>(
+          stream: products,
+          builder: (context, snap) {
+            final rows = snap.data ?? const <Product>[];
+            final query = _search.text.trim().toLowerCase();
+            final filtered = query.isEmpty
+                ? rows
+                : rows.where((p) {
+                    final haystack =
+                        '${p.name} ${p.productCode} ${p.barcode ?? ''}'
+                            .toLowerCase();
+                    return haystack.contains(query);
+                  }).toList();
+            return Card(
+              margin: const EdgeInsets.all(12),
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: TextField(
+                      controller: _search,
+                      decoration: const InputDecoration(
+                        labelText: 'Search products',
+                        prefixIcon: Icon(Icons.search),
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: snap.connectionState == ConnectionState.waiting
+                        ? const Center(child: CircularProgressIndicator())
+                        : filtered.isEmpty
+                            ? const Center(
+                                child: Padding(
+                                  padding: EdgeInsets.all(16),
+                                  child: Text(
+                                    'No products available for this store.',
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              )
+                            : ListView.separated(
+                                itemCount: filtered.length,
+                                separatorBuilder: (_, __) =>
+                                    const Divider(height: 1),
+                                itemBuilder: (_, index) {
+                                  final product = filtered[index];
+                                  return ListTile(
+                                    title: Text(product.name),
+                                    subtitle: Text(
+                                      'Code: ${product.productCode} · Rs ${product.sellingPrice.toStringAsFixed(2)}',
+                                    ),
+                                    trailing: FilledButton.tonalIcon(
+                                      onPressed: () => _addProduct(product),
+                                      icon: const Icon(Icons.add_shopping_cart),
+                                      label: const Text('Add'),
+                                    ),
+                                  );
+                                },
+                              ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+
+        final cartPane = StreamBuilder<List<CartItemWithProduct>>(
+          stream: items,
+          builder: (context, snap) {
+            final rows = snap.data ?? const <CartItemWithProduct>[];
+            final totals = _CartTotals.fromItems(rows);
+            return Card(
+              margin: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Your Cart',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'This cart appears live on the store POS as a customer cart.',
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(color: Colors.grey[700]),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: rows.isEmpty
+                        ? const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(16),
+                              child: Text(
+                                'Add products to start your cart.',
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          )
+                        : ListView.separated(
+                            itemCount: rows.length,
+                            separatorBuilder: (_, __) =>
+                                const Divider(height: 1),
+                            itemBuilder: (_, index) {
+                              final row = rows[index];
+                              return ListTile(
+                                title: Text(row.product.name),
+                                subtitle: Text(
+                                  'Rs ${row.item.unitPrice.toStringAsFixed(2)} x ${row.item.quantity.toStringAsFixed(0)}',
+                                ),
+                                trailing: SizedBox(
+                                  width: 152,
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    children: [
+                                      IconButton(
+                                        onPressed: () => _changeQuantity(
+                                          row.item,
+                                          row.item.quantity - 1,
+                                        ),
+                                        icon: const Icon(
+                                            Icons.remove_circle_outline),
+                                      ),
+                                      Text(
+                                          row.item.quantity.toStringAsFixed(0)),
+                                      IconButton(
+                                        onPressed: () => _changeQuantity(
+                                          row.item,
+                                          row.item.quantity + 1,
+                                        ),
+                                        icon: const Icon(
+                                            Icons.add_circle_outline),
+                                      ),
+                                      IconButton(
+                                        onPressed: () => _removeItem(row.item),
+                                        icon: const Icon(Icons.delete_outline),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                  const Divider(height: 1),
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${totals.items} item${totals.items == 1 ? '' : 's'}',
+                          ),
+                        ),
+                        Text(
+                          'Rs ${totals.grandTotal.toStringAsFixed(2)}',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleMedium
+                              ?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+
+        if (narrow) {
+          return Column(
+            children: [
+              Expanded(flex: 3, child: productPane),
+              SizedBox(height: 340, child: cartPane),
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            Expanded(flex: 3, child: productPane),
+            SizedBox(width: 420, child: cartPane),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final storeId = _activeStoreId;
@@ -207,7 +491,8 @@ class _PublicStorefrontPageState extends ConsumerState<PublicStorefrontPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-            storeId == null ? 'Customer Storefront' : _storeName ?? storeId),
+          storeId == null ? 'Customer Storefront' : _storeName ?? storeId,
+        ),
       ),
       body: storeId == null || cartId == null
           ? _StorefrontSetup(
@@ -218,262 +503,16 @@ class _PublicStorefrontPageState extends ConsumerState<PublicStorefrontPage> {
               error: _error,
               onContinue: _startShopping,
             )
-          : StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-              stream: storeCollection(
-                ref.read(firestoreProvider),
-                storeId,
-                'carts',
-              ).doc('$cartId').snapshots(),
-              builder: (context, cartSnap) {
-                if (cartSnap.connectionState == ConnectionState.waiting &&
-                    !cartSnap.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                final cartData = cartSnap.data?.data();
-                final cartStatus =
-                    (cartData?['status'] as String?)?.toLowerCase() ?? 'active';
-
-                // The owner has completed this cart. Do not allow the
-                // customer to add/change/remove anything in the old cart.
-                if (cartStatus == 'completed') {
-                  return _CompletedCustomerCart(
-                    onStartNewCart: _busy ? null : _startShopping,
-                    cartId: cartId,
-                  );
-                }
-
-                // Cache the streams. The cart document changes whenever an item
-                // is added/updated, so the outer cart StreamBuilder rebuilds.
-                // Do not create new product/cart-item streams on every rebuild.
-                if (_streamStoreId != storeId || _streamCartId != cartId) {
-                  _streamStoreId = storeId;
-                  _streamCartId = cartId;
-                  _productsStream = _productRepo(storeId).watchAll();
-                  _cartItemsStream = _salesRepo(storeId).watchCartItems(cartId);
-                }
-
-                final products = _productsStream!;
-                final items = _cartItemsStream!;
-
-                return LayoutBuilder(
-                  builder: (context, constraints) {
-                    final narrow = constraints.maxWidth < 900;
-
-                    final productPane = StreamBuilder<List<Product>>(
-                      stream: products,
-                      builder: (context, snap) {
-                        final rows = snap.data ?? const <Product>[];
-                        final query = _search.text.trim().toLowerCase();
-                        final filtered = query.isEmpty
-                            ? rows
-                            : rows.where((p) {
-                                final haystack =
-                                    '${p.name} ${p.productCode} ${p.barcode ?? ''}'
-                                        .toLowerCase();
-                                return haystack.contains(query);
-                              }).toList();
-                        return Card(
-                          margin: const EdgeInsets.all(12),
-                          child: Column(
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: TextField(
-                                  controller: _search,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Search products',
-                                    prefixIcon: Icon(Icons.search),
-                                    border: OutlineInputBorder(),
-                                  ),
-                                  onChanged: (_) => setState(() {}),
-                                ),
-                              ),
-                              const Divider(height: 1),
-                              Expanded(
-                                child: snap.connectionState ==
-                                        ConnectionState.waiting
-                                    ? const Center(
-                                        child: CircularProgressIndicator())
-                                    : filtered.isEmpty
-                                        ? const Center(
-                                            child: Padding(
-                                              padding: EdgeInsets.all(16),
-                                              child: Text(
-                                                'No products available for this store.',
-                                                textAlign: TextAlign.center,
-                                              ),
-                                            ),
-                                          )
-                                        : ListView.separated(
-                                            itemCount: filtered.length,
-                                            separatorBuilder: (_, __) =>
-                                                const Divider(height: 1),
-                                            itemBuilder: (_, index) {
-                                              final product = filtered[index];
-                                              return ListTile(
-                                                title: Text(product.name),
-                                                subtitle: Text(
-                                                  'Code: ${product.productCode} · Rs ${product.sellingPrice.toStringAsFixed(2)}',
-                                                ),
-                                                trailing:
-                                                    FilledButton.tonalIcon(
-                                                  onPressed: () =>
-                                                      _addProduct(product),
-                                                  icon: const Icon(
-                                                      Icons.add_shopping_cart),
-                                                  label: const Text('Add'),
-                                                ),
-                                              );
-                                            },
-                                          ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    );
-
-                    final cartPane = StreamBuilder<List<CartItemWithProduct>>(
-                      stream: items,
-                      builder: (context, snap) {
-                        final rows = snap.data ?? const <CartItemWithProduct>[];
-                        final totals = _CartTotals.fromItems(rows);
-                        return Card(
-                          margin: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Your Cart',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleMedium,
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'This cart appears live on the store POS as a customer cart.',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(color: Colors.grey[700]),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const Divider(height: 1),
-                              Expanded(
-                                child: rows.isEmpty
-                                    ? const Center(
-                                        child: Padding(
-                                          padding: EdgeInsets.all(16),
-                                          child: Text(
-                                            'Add products to start your cart.',
-                                            textAlign: TextAlign.center,
-                                          ),
-                                        ),
-                                      )
-                                    : ListView.separated(
-                                        itemCount: rows.length,
-                                        separatorBuilder: (_, __) =>
-                                            const Divider(height: 1),
-                                        itemBuilder: (_, index) {
-                                          final row = rows[index];
-                                          return ListTile(
-                                            title: Text(row.product.name),
-                                            subtitle: Text(
-                                              'Rs ${row.item.unitPrice.toStringAsFixed(2)} x ${row.item.quantity.toStringAsFixed(0)}',
-                                            ),
-                                            trailing: SizedBox(
-                                              width: 152,
-                                              child: Row(
-                                                mainAxisAlignment:
-                                                    MainAxisAlignment.end,
-                                                children: [
-                                                  IconButton(
-                                                    onPressed: () =>
-                                                        _changeQuantity(
-                                                      row.item,
-                                                      row.item.quantity - 1,
-                                                    ),
-                                                    icon: const Icon(Icons
-                                                        .remove_circle_outline),
-                                                  ),
-                                                  Text(row.item.quantity
-                                                      .toStringAsFixed(0)),
-                                                  IconButton(
-                                                    onPressed: () =>
-                                                        _changeQuantity(
-                                                      row.item,
-                                                      row.item.quantity + 1,
-                                                    ),
-                                                    icon: const Icon(Icons
-                                                        .add_circle_outline),
-                                                  ),
-                                                  IconButton(
-                                                    onPressed: () =>
-                                                        _removeItem(row.item),
-                                                    icon: const Icon(
-                                                        Icons.delete_outline),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                      ),
-                              ),
-                              const Divider(height: 1),
-                              Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        '${totals.items} item${totals.items == 1 ? '' : 's'}',
-                                      ),
-                                    ),
-                                    Text(
-                                      'Rs ${totals.grandTotal.toStringAsFixed(2)}',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleMedium
-                                          ?.copyWith(
-                                              fontWeight: FontWeight.bold),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    );
-
-                    if (narrow) {
-                      return Column(
-                        children: [
-                          Expanded(flex: 3, child: productPane),
-                          SizedBox(height: 340, child: cartPane),
-                        ],
-                      );
-                    }
-
-                    return Row(
-                      children: [
-                        Expanded(flex: 3, child: productPane),
-                        SizedBox(width: 420, child: cartPane),
-                      ],
-                    );
-                  },
-                );
-              },
-            ),
+          : _cartClosed
+              ? _CompletedCustomerCart(
+                  onStartNewCart: _busy ? null : _startShopping,
+                  cartId: cartId,
+                )
+              : _buildActiveStorefront(
+                  context,
+                  storeId,
+                  cartId,
+                ),
     );
   }
 }
