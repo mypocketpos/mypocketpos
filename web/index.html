@@ -10,7 +10,7 @@
   <meta name="robots" content="index, follow">
 
   <!-- ── SEO ──────────────────────────────────────────────────────────── -->
-  <title>Pocket POS — Offline-first Point of Sale &amp; Billing Software</title>
+  <title>Pocket POS — Offline-First POS &amp; GST Billing Software in India</title>
   <meta name="description" content="Pocket POS is a fast, offline-first point-of-sale and billing app for grocery, pharmacy, bakery, electronics and apparel stores. Multi-counter billing, inventory &amp; warehouse tracking, barcode scanning, GST invoices, credit (udhar) ledger and cloud sync across devices.">
   <meta name="keywords" content="POS software, billing software, point of sale, retail POS, kirana billing, pharmacy POS, inventory management, barcode billing, GST invoice, udhar ledger, offline POS, cloud POS, multi store POS">
   <link rel="canonical" href="https://mypocketpos.in/">
@@ -35,6 +35,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Preload Critical Visual Assets -->
+  <link rel="preload" href="icons/logo-mark.svg" as="image" type="image/svg+xml">
 
   <!-- Structured data for rich results -->
   <script type="application/ld+json">
@@ -118,7 +121,7 @@
     }
     *{box-sizing:border-box;margin:0;padding:0}
     html{scroll-behavior:smooth}
-    body{font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:var(--bg);line-height:1.6;-webkit-font-smoothing:antialiased}
+    body{font-family:'Inter',system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:var(--bg);line-height:1.6;-webkit-font-smoothing:antialiased}
     a{color:inherit;text-decoration:none}
     .wrap{max-width:1140px;margin:0 auto;padding:0 20px}
     .btn{display:inline-flex;align-items:center;gap:8px;font-weight:600;border-radius:10px;padding:12px 22px;cursor:pointer;border:0;font-size:15px;transition:transform .12s ease,box-shadow .12s ease}
@@ -141,8 +144,6 @@
     .nav-toggle span+span{margin-top:4px}
     @media(max-width:760px){
       .nav-toggle{display:block}
-      /* Collapse the links into a panel under the sticky header instead of
-         hiding them outright — the hamburger toggles .open. */
       .nav-links{display:none;position:absolute;top:100%;left:0;right:0;flex-direction:column;align-items:stretch;gap:0;background:var(--bg);border-bottom:1px solid var(--line);box-shadow:0 12px 24px rgba(0,0,0,.08);padding:8px 20px 16px}
       .nav-links.open{display:flex}
       .nav-links .link{padding:12px 2px;border-bottom:1px solid var(--line)}
@@ -207,8 +208,7 @@
     footer{border-top:1px solid var(--line);padding:36px 0;color:var(--muted);font-size:14px}
     .foot{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px}
 
-    /* Landing overlay — sits above the Flutter app (which boots in the
-       background) until the user clicks Login/Register. */
+    /* Landing overlay */
     #landing{position:fixed;inset:0;z-index:2147483000;overflow-y:auto;background:var(--bg)}
   </style>
 </head>
@@ -226,8 +226,7 @@
           <a class="link" href="#how">How it works</a>
           <a class="link" href="/blog/">Blog</a>
           <a class="link" href="/contact">Contact</a>
-         <!-- Updated Google Drive Direct Download Link -->
-          <a class="link"  href="https://drive.google.com/uc?export=download&id=1d2YgY2gKdtlwpPnT70765v-I9glh_xv1" target="_blank" rel="noopener noreferrer">Download</a>
+          <a class="link" href="https://drive.google.com/uc?export=download&id=1d2YgY2gKdtlwpPnT70765v-I9glh_xv1" target="_blank" rel="nofollow noopener noreferrer">Download</a>
           <div class="nav-cta">
             <button class="btn btn-ghost" onclick="enterApp()">Login</button>
             <button class="btn btn-primary" onclick="enterApp()">Register store</button>
@@ -354,19 +353,36 @@
     </footer>
   </div>
 
-  <!-- Boot the Flutter POS app in the background (async, non-blocking so the
-       landing paints instantly and stays crawlable). The #landing overlay
-       covers it until the user chooses to enter. -->
-  <script src="sqljs/sql-asm.js" defer></script>
-  <script src="flutter_bootstrap.js" async></script>
   <script>
-    // Login / Register simply reveal the already-booting app (which opens on
-    // the store-login screen). Reliable in `flutter run` and production.
+    var appInitializing = false;
+
+    // Dynamically boot the heavy Flutter engine only when requested
     function enterApp() {
       var l = document.getElementById('landing');
-      if (l) l.style.display = 'none';
+
+      if (window._flutterAppLoaded) {
+        if (l) l.style.display = 'none';
+        return;
+      }
+
+      if (appInitializing) return;
+      appInitializing = true;
+
+      var sqlScript = document.createElement('script');
+      sqlScript.src = 'sqljs/sql-asm.js';
+      sqlScript.onload = function() {
+        var flutterScript = document.createElement('script');
+        flutterScript.src = 'flutter_bootstrap.js';
+        flutterScript.onload = function() {
+          window._flutterAppLoaded = true;
+          if (l) l.style.display = 'none';
+        };
+        document.body.appendChild(flutterScript);
+      };
+      document.body.appendChild(sqlScript);
     }
-    // Mobile nav (<=760px): the hamburger opens the collapsed link panel.
+
+    // Mobile nav toggle
     function toggleNav(force) {
       var links = document.getElementById('navLinks');
       var btn = document.getElementById('navToggle');
@@ -375,21 +391,20 @@
       links.classList.toggle('open', open);
       if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
     }
-    // Widening past the breakpoint restores the desktop row, so drop .open —
-    // otherwise it lingers and the panel reappears expanded on the way back.
+
     if (window.matchMedia) {
       var wide = window.matchMedia('(min-width:761px)');
       var onWide = function (e) { if (e.matches) toggleNav(false); };
       if (wide.addEventListener) wide.addEventListener('change', onWide);
-      else wide.addListener(onWide); // Safari < 14
+      else wide.addListener(onWide);
     }
-    // Close after picking a link so the in-page anchor target is visible.
+
     Array.prototype.forEach.call(
       document.querySelectorAll('#navLinks a, #navLinks button'),
       function (el) { el.addEventListener('click', function () { toggleNav(false); }); }
     );
-    // Deep-link from the blog / marketing pages: "/?app=1" opens the app
-    // directly instead of showing the landing overlay first.
+
+    // Deep-link direct launch
     if (window.location.search.indexOf('app=1') !== -1) {
       enterApp();
     }
