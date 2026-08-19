@@ -549,11 +549,24 @@ final platformStorefrontShoppingConfigProvider =
       .collection('platform_config')
       .doc('public_features')
       .snapshots()
-      .map((snap) => StorefrontShoppingConfig.fromFirestoreMap(snap.data()));
+      .map((snap) {
+    // Handle null data
+    if (!snap.exists || snap.data() == null || snap.data()!.isEmpty) {
+      // Return default config if document doesn't exist
+      return const StorefrontShoppingConfig.defaults();
+    }
+    try {
+      return StorefrontShoppingConfig.fromFirestoreMap(snap.data()!);
+    } catch (e) {
+      // If parsing fails, return default
+      return const StorefrontShoppingConfig.defaults();
+    }
+  });
 });
 
 final platformAnonymousShoppingEnabledProvider = Provider<bool>((ref) {
   final cfg = ref.watch(platformStorefrontShoppingConfigProvider).valueOrNull;
+  // Return false if config is null (loading/error state)
   return cfg?.allowAnonymousShopping ?? false;
 });
 
