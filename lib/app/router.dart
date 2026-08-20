@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:pocket_pos/features/mill_run/presentation/milling_config_page.dart';
 
 import '../features/auth/domain/auth_models.dart';
 import '../features/categories/presentation/category_page.dart';
@@ -173,6 +174,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
               path: '/milling-contracts',
               builder: (context, state) => const MillingContractsPage()),
+          GoRoute(
+            path: '/milling-config',
+            builder: (context, state) => const MillingConfigPage(),
+          ),
         ],
       ),
     ],
@@ -257,6 +262,12 @@ class _AppShell extends ConsumerWidget {
       // Rice mill-only menu items
       if (!scoped && isRiceMill)
         (route: '/mill-runs', label: 'Mill Runs', icon: Icons.factory_rounded),
+      if (!scoped && isRiceMill)
+        (
+          route: '/milling-config',
+          label: 'Milling Config',
+          icon: Icons.settings_rounded
+        ),
       if (!scoped && isRiceMill)
         (
           route: '/milling-charges',
