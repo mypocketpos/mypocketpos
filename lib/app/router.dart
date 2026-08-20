@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pocket_pos/features/mill_run/presentation/milling_config_page.dart';
+import 'package:pocket_pos/features/weighbridge/presentation/vehicle_entry_detail_page.dart';
+import 'package:pocket_pos/features/weighbridge/presentation/vehicle_entry_list_page.dart';
 
 import '../features/auth/domain/auth_models.dart';
 import '../features/categories/presentation/category_page.dart';
@@ -178,6 +180,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/milling-config',
             builder: (context, state) => const MillingConfigPage(),
           ),
+          GoRoute(
+            path: '/weighbridge',
+            builder: (context, state) => const VehicleEntryListPage(),
+          ),
+          GoRoute(
+            path: '/weighbridge/:id',
+            builder: (context, state) {
+              final id = int.tryParse(state.pathParameters['id'] ?? '');
+              return VehicleEntryDetailPage(entryId: id);
+            },
+          ),
         ],
       ),
     ],
@@ -273,6 +286,12 @@ class _AppShell extends ConsumerWidget {
           route: '/milling-charges',
           label: 'Milling Charges',
           icon: Icons.receipt_long_rounded
+        ),
+      if (!scoped && isRiceMill)
+        (
+          route: '/weighbridge',
+          label: 'Weighbridge',
+          icon: Icons.scale_rounded
         ),
       (route: '/reports', label: 'Reports', icon: Icons.analytics_rounded),
       (
