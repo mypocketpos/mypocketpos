@@ -10,7 +10,44 @@
   <!-- End Google Tag Manager -->
 
   <base href="$FLUTTER_BASE_HREF">
+  <!-- Global Automatic Route Tracker for Hash Navigation -->
+  <script>
+    (function() {
+      function sendVirtualPageView() {
+        // Reads the hash portion (e.g., "#/store-login") or defaults to "/"
+        var currentHash = window.location.hash || '/';
+        
+        window.dataLayer = window.dataLayer || [];
+        window.dataLayer.push({
+          'event': 'virtual_page_view',
+          'page_path': currentHash,
+          'page_title': document.title || currentHash
+        });
+      }
 
+      // 1. Fire on hash change (when navigating between Flutter screens)
+      window.addEventListener('hashchange', sendVirtualPageView);
+
+      // 2. Fire on initial page load (if user directly visits https://mypocketpos.in/#/store-login)
+      window.addEventListener('load', function() {
+        if (window.location.hash) {
+          sendVirtualPageView();
+        }
+      });
+    })();
+  </script>
+
+  <!-- Add this helper script right here -->
+  <script>
+    function trackVirtualPageView(pagePath, pageTitle) {
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push({
+        'event': 'virtual_page_view',
+        'page_path': pagePath,
+        'page_title': pageTitle
+      });
+    }
+  </script>
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
