@@ -41,16 +41,49 @@
     })();
   </script>
 
-  <!-- Add this helper script right here -->
+  <!-- Automatic Single-Page Application (SPA) Route Observer -->
   <script>
-    function trackVirtualPageView(pagePath, pageTitle) {
-      window.dataLayer = window.dataLayer || [];
-      window.dataLayer.push({
-        'event': 'virtual_page_view',
-        'page_path': pagePath,
-        'page_title': pageTitle
+    (function () {
+      var lastPath = '';
+
+      function trackPageView() {
+        var currentPath = window.location.hash || window.location.pathname;
+
+        // Prevent duplicate page_view events for the same path
+        if (currentPath === lastPath) return;
+        lastPath = currentPath;
+
+        window.dataLayer = window.dataLayer || [];
+        window.dataLayer.push({
+          'event': 'virtual_page_view',
+          'page_path': currentPath,
+          'page_title': document.title || currentPath
+        });
+      }
+
+      // 1. Intercept Flutter's HTML5 History API updates (context.go / context.push)
+      var origPushState = history.pushState;
+      history.pushState = function () {
+        origPushState.apply(this, arguments);
+        setTimeout(trackPageView, 100);
+      };
+
+      var origReplaceState = history.replaceState;
+      history.replaceState = function () {
+        origReplaceState.apply(this, arguments);
+        setTimeout(trackPageView, 100);
+      };
+
+      // 2. Listen to browser Back/Forward button clicks
+      window.addEventListener('popstate', function () {
+        setTimeout(trackPageView, 100);
       });
-    }
+
+      // 3. Fire on initial direct application load
+      window.addEventListener('load', function () {
+        setTimeout(trackPageView, 500);
+      });
+    })();
   </script>
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
