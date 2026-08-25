@@ -14,77 +14,8 @@
   <!-- End Google Tag Manager -->
 
   <base href="$FLUTTER_BASE_HREF">
-  <!-- Global Automatic Route Tracker for Hash Navigation -->
-  <script>
-    (function () {
-      function sendVirtualPageView() {
-        // Reads the hash portion (e.g., "#/store-login") or defaults to "/"
-        var currentHash = window.location.hash || '/';
-
-        window.dataLayer = window.dataLayer || [];
-        window.dataLayer.push({
-          'event': 'virtual_page_view',
-          'page_path': currentHash,
-          'page_title': document.title || currentHash
-        });
-      }
-
-      // 1. Fire on hash change (when navigating between Flutter screens)
-      window.addEventListener('hashchange', sendVirtualPageView);
-
-      // 2. Fire on initial page load (if user directly visits https://mypocketpos.in/#/store-login)
-      window.addEventListener('load', function () {
-        if (window.location.hash) {
-          sendVirtualPageView();
-        }
-      });
-    })();
-  </script>
-
-  <!-- Automatic Single-Page Application (SPA) Route Observer -->
-  <script>
-    (function () {
-      var lastPath = '';
-
-      function trackPageView() {
-        var currentPath = window.location.hash || window.location.pathname;
-
-        // Prevent duplicate page_view events for the same path
-        if (currentPath === lastPath) return;
-        lastPath = currentPath;
-
-        window.dataLayer = window.dataLayer || [];
-        window.dataLayer.push({
-          'event': 'virtual_page_view',
-          'page_path': currentPath,
-          'page_title': document.title || currentPath
-        });
-      }
-
-      // 1. Intercept Flutter's HTML5 History API updates (context.go / context.push)
-      var origPushState = history.pushState;
-      history.pushState = function () {
-        origPushState.apply(this, arguments);
-        setTimeout(trackPageView, 100);
-      };
-
-      var origReplaceState = history.replaceState;
-      history.replaceState = function () {
-        origReplaceState.apply(this, arguments);
-        setTimeout(trackPageView, 100);
-      };
-
-      // 2. Listen to browser Back/Forward button clicks
-      window.addEventListener('popstate', function () {
-        setTimeout(trackPageView, 100);
-      });
-
-      // 3. Fire on initial direct application load
-      window.addEventListener('load', function () {
-        setTimeout(trackPageView, 500);
-      });
-    })();
-  </script>
+  <!-- Shared Tracking Script -->
+  <script src="/gtm-tracker.js" defer></script>
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
