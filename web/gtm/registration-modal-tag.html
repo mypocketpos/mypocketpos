@@ -1,18 +1,24 @@
 <!--
   GTM Custom HTML Tag — "Registration Modal"
   ==========================================
-  This file is the version-controlled copy of a tag that lives in Google Tag
-  Manager. It is NOT loaded by the site; paste its contents into the Custom
-  HTML tag body and keep the two in sync.
+  Version-controlled copy of a tag that lives in Google Tag Manager. This file
+  is NOT loaded by the site; paste its contents into the Custom HTML tag body
+  and keep the two in sync.
 
-  Requires the #flutter-modal-container markup in web/index.html.
-  The Flutter side of the contract lives in
-  lib/core/web/parent_modal_bridge.dart — the CLOSE_MESSAGE string and the
-  trusted origin must match on both ends.
+  Behaviour:
+    - Auto-opens the modal AUTO_OPEN_DELAY_MS after the tag fires (5s).
+    - Dismissing it (×, backdrop, Esc, or the app's own close button) collapses
+      it to the amber #registration-sticky tab on the right edge.
+    - Clicking that tab re-opens the same modal.
+    - The tab's own × hides it for the rest of the session.
+
+  Requires #flutter-modal-container and #registration-sticky in web/index.html.
+  The Flutter side of the contract is lib/core/web/parent_modal_bridge.dart —
+  CLOSE_MESSAGE and the trusted origin must match on both ends.
 
   Tag settings:
     - Type:    Custom HTML
-    - Trigger: whatever should open the modal (e.g. Click on "Register store")
+    - Trigger: DOM Ready (All Pages). No click trigger — the popup is timed.
     - Leave "Support document.write" UNCHECKED.
 -->
 <script>
@@ -20,7 +26,7 @@
     'use strict';
 
     // ── Configuration ──────────────────────────────────────────────────────
-    // Two required query/hash parts, both easy to lose:
+    // Two required parts of this URL, both easy to lose:
     //   app=1            → index.html auto-calls enterApp(), so the iframe
     //                      boots the Flutter engine instead of rendering the
     //                      marketing landing overlay inside the modal.
@@ -28,25 +34,35 @@
     //                      and the route is /store-register, not /registration.
     // buildUrl() appends &embed=1 before the '#'.
     var APP_URL = 'https://mypocketpos.in/?app=1#/store-register';
-    // Origins allowed to send us the close signal. Must be scheme + host
-    // (+ port), no trailing slash — this is compared against event.origin.
+    // Origins allowed to send us the close signal. Scheme + host (+ port), no
+    // trailing slash — compared against event.origin.
     var TRUSTED_ORIGINS = ['https://mypocketpos.in'];
     var CLOSE_MESSAGE = 'close_registration_modal';
+    var AUTO_OPEN_DELAY_MS = 5000;
+    // Session key for "user dismissed the tab, stop nagging".
+    var DISMISS_KEY = 'pocketpos_reg_dismissed';
 
     var container = document.getElementById('flutter-modal-container');
     var content = document.getElementById('flutter-modal-content');
-    if (!container || !content) return; // markup missing — fail silently
+    var tab = document.getElementById('registration-sticky');
+    if (!container || !content || !tab) return; // markup missing — fail silently
 
-    // The tag can fire more than once per page. Everything below is written to
-    // be idempotent, and the listeners are attached only on the first run.
+    // The tag can fire more than once per page. Everything below is idempotent,
+    // and listeners plus the auto-open timer are set up only on the first run.
     var state = window.__pocketPosModal;
     var firstRun = !state;
     if (firstRun) state = window.__pocketPosModal = { lastFocus: null };
 
+    // sessionStorage throws in some privacy modes, so it is always guarded.
+    function isDismissed() {
+      try { return sessionStorage.getItem(DISMISS_KEY) === '1'; }
+      catch (e) { return false; }
+    }
+    function rememberDismissed() {
+      try { sessionStorage.setItem(DISMISS_KEY, '1'); } catch (e) { }
+    }
+
     function buildUrl() {
-      // `embed=1` tells the Flutter app it is inside the modal, so it can show
-      // its own Close button. Appended before any '#' so it lands in the query
-      // string rather than the hash route.
       var hash = '';
       var url = APP_URL;
       var h = url.indexOf('#');
@@ -58,8 +74,8 @@
     }
 
     function ensureIframe() {
-      // Reuse the existing frame so repeat triggers don't stack iframes (and
-      // don't reload a part-filled form).
+      // Reuse the existing frame so repeat opens don't stack iframes — and so
+      // collapsing to the tab keeps a part-filled form intact.
       var iframe = document.getElementById('flutter-app-iframe');
       if (iframe) return iframe;
 
@@ -77,8 +93,10 @@
     }
 
     function openModal() {
+      if (container.classList.contains('is-open')) return;
       ensureIframe();
       state.lastFocus = document.activeElement;
+      tab.hidden = true;                       // modal and tab are exclusive
       container.classList.add('is-open');
       container.setAttribute('aria-hidden', 'false');
       document.body.classList.add('modal-open');
@@ -86,19 +104,27 @@
       if (closeBtn) closeBtn.focus();
     }
 
-    function closeModal() {
+    // Every dismissal path lands here: hide the modal, leave the tab behind.
+    function collapseToTab() {
       if (!container.classList.contains('is-open')) return;
       container.classList.remove('is-open');
       container.setAttribute('aria-hidden', 'true');
       document.body.classList.remove('modal-open');
-      // Return focus to whatever opened the modal.
-      if (state.lastFocus && typeof state.lastFocus.focus === 'function') {
+      if (!isDismissed()) {
+        tab.hidden = false;
+        // Move focus to the tab so keyboard users aren't dropped at the top of
+        // the document.
+        var openBtn = document.getElementById('registration-sticky-open');
+        if (openBtn) openBtn.focus();
+      } else if (state.lastFocus && typeof state.lastFocus.focus === 'function') {
         state.lastFocus.focus();
       }
       state.lastFocus = null;
-      // To discard a part-filled form instead of caching it, uncomment:
-      // var f = document.getElementById('flutter-app-iframe');
-      // if (f) f.parentNode.removeChild(f);
+    }
+
+    function dismissTab() {
+      tab.hidden = true;
+      rememberDismissed();
     }
 
     if (firstRun) {
@@ -120,29 +146,41 @@
           : (data && typeof data === 'object' ? data.type : null);
         if (message !== CLOSE_MESSAGE) return;
 
-        closeModal();
+        collapseToTab();
       }, false);
 
-      // ── Close from the parent page ──────────────────────────────────────
+      // ── Dismissal from the parent page ──────────────────────────────────
       var closeBtn = document.getElementById('close-flutter-modal');
-      if (closeBtn) closeBtn.addEventListener('click', closeModal);
+      if (closeBtn) closeBtn.addEventListener('click', collapseToTab);
 
       // Backdrop click — only when the backdrop itself is the target, so a
       // click that started inside the card doesn't dismiss it.
       container.addEventListener('click', function (event) {
-        if (event.target === container) closeModal();
+        if (event.target === container) collapseToTab();
       });
 
-      // Escape key, expected of any modal.
       document.addEventListener('keydown', function (event) {
-        if (event.key === 'Escape' || event.keyCode === 27) closeModal();
+        if (event.key === 'Escape' || event.keyCode === 27) collapseToTab();
       });
+
+      // ── The collapsed tab ───────────────────────────────────────────────
+      var tabOpen = document.getElementById('registration-sticky-open');
+      if (tabOpen) tabOpen.addEventListener('click', openModal);
+
+      var tabDismiss = document.getElementById('registration-sticky-dismiss');
+      if (tabDismiss) tabDismiss.addEventListener('click', dismissTab);
+
+      // ── Timed auto-open ─────────────────────────────────────────────────
+      if (!isDismissed()) {
+        window.setTimeout(function () {
+          // Re-check: the visitor may have dismissed it during the delay.
+          if (!isDismissed()) openModal();
+        }, AUTO_OPEN_DELAY_MS);
+      }
 
       // Let other tags / page code drive the modal too.
       window.pocketPosOpenRegistration = openModal;
-      window.pocketPosCloseRegistration = closeModal;
+      window.pocketPosCloseRegistration = collapseToTab;
     }
-
-    openModal();
   })();
 </script>

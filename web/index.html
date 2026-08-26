@@ -780,6 +780,110 @@
         transition: none;
       }
     }
+
+    /* ── Collapsed registration tab ─────────────────────────────────────────
+       Where the modal goes when dismissed. Amber rather than brand green so it
+       reads as a persistent nudge, not part of the page. Sits above #landing
+       but below the modal, so re-opening covers it. */
+    #registration-sticky {
+      --reg-tab-bg: #F5A623;
+      position: fixed;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 2147483005;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 7px 12px;
+      background: var(--reg-tab-bg);
+      color: #fff;
+      border-radius: 12px 0 0 12px;
+      box-shadow: -3px 0 16px rgba(0, 0, 0, .22);
+      animation: reg-tab-in .25s ease-out;
+    }
+
+    /* The [hidden] attribute's display:none loses to display:flex above, so it
+       has to be restated. */
+    #registration-sticky[hidden] {
+      display: none;
+    }
+
+    #registration-sticky button {
+      background: none;
+      border: 0;
+      padding: 0;
+      margin: 0;
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    #registration-sticky button:focus-visible {
+      outline: 2px solid #fff;
+      outline-offset: 2px;
+      border-radius: 4px;
+    }
+
+    #registration-sticky-dismiss {
+      font-size: 17px;
+      line-height: 1;
+      opacity: .85;
+      padding: 0 3px;
+    }
+
+    #registration-sticky-dismiss:hover {
+      opacity: 1;
+    }
+
+    #registration-sticky-open {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    #registration-sticky-open .rst-label {
+      writing-mode: vertical-rl;
+      /* Rotated so the label reads bottom-to-top. */
+      transform: rotate(180deg);
+      text-transform: uppercase;
+      letter-spacing: .14em;
+      font-weight: 700;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    #registration-sticky-open svg {
+      width: 18px;
+      height: 18px;
+      display: block;
+    }
+
+    @media (max-width: 520px) {
+      #registration-sticky {
+        padding: 8px 5px 10px;
+      }
+
+      #registration-sticky-open .rst-label {
+        font-size: 11px;
+        letter-spacing: .1em;
+      }
+    }
+
+    @keyframes reg-tab-in {
+      from {
+        opacity: 0;
+        transform: translate(14px, -50%);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      #registration-sticky {
+        animation: none;
+      }
+    }
   </style>
 </head>
 
@@ -802,6 +906,22 @@
     <div id="flutter-modal-content">
       <button id="close-flutter-modal" type="button" aria-label="Close registration">&times;</button>
     </div>
+  </div>
+
+  <!-- Collapsed state of the modal above. Hidden until the visitor dismisses
+       the popup; the GTM tag toggles it. Two separate buttons (rather than one
+       button with a nested one, which is invalid HTML): the label re-opens the
+       modal, the small × dismisses the tab for the rest of the session. -->
+  <div id="registration-sticky" hidden>
+    <button id="registration-sticky-dismiss" type="button" aria-label="Dismiss registration tab">&times;</button>
+    <button id="registration-sticky-open" type="button" aria-label="Open registration">
+      <span class="rst-label">Registration</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+        stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 4h16v12H5.5L4 17.5V4z" />
+        <path d="M8 9h8M8 12.5h5" />
+      </svg>
+    </button>
   </div>
 
   <div id="landing">
