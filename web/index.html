@@ -675,6 +675,111 @@
         transform: rotate(360deg);
       }
     }
+
+    /* ── Registration modal (iframe host, injected by GTM) ──────────────────
+       Hidden until the GTM tag adds .is-open. Sits above #landing
+       (2147483000) but below #app-loader (2147483647). */
+    #flutter-modal-container {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 2147483010;
+      background: rgba(11, 31, 27, .55);
+      backdrop-filter: blur(4px);
+      padding: 20px;
+      overflow-y: auto;
+      /* Centres the card and keeps it centred when it is shorter than the
+         viewport, while still allowing scroll when it is taller. */
+      place-items: center;
+    }
+
+    #flutter-modal-container.is-open {
+      display: grid;
+    }
+
+    #flutter-modal-content {
+      position: relative;
+      width: min(460px, 100%);
+      height: min(760px, calc(100vh - 40px));
+      background: #fff;
+      border-radius: 18px;
+      box-shadow: 0 30px 70px rgba(0, 0, 0, .35);
+      overflow: hidden;
+      animation: modal-in .18s ease-out;
+    }
+
+    #flutter-app-iframe {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border: 0;
+    }
+
+    #close-flutter-modal {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 2;
+      width: 36px;
+      height: 36px;
+      border: 0;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, .92);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, .18);
+      color: #0b1f1b;
+      font-size: 20px;
+      line-height: 1;
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      transition: background .15s ease, transform .15s ease;
+    }
+
+    #close-flutter-modal:hover {
+      background: #fff;
+      transform: scale(1.06);
+    }
+
+    #close-flutter-modal:focus-visible {
+      outline: 2px solid var(--brand);
+      outline-offset: 2px;
+    }
+
+    /* Full-bleed sheet on phones — a 460px card wastes space below ~520px. */
+    @media (max-width: 520px) {
+      #flutter-modal-container {
+        padding: 0;
+      }
+
+      #flutter-modal-content {
+        width: 100%;
+        height: 100%;
+        max-height: none;
+        border-radius: 0;
+      }
+    }
+
+    /* Prevents the page behind the modal from scrolling. */
+    body.modal-open {
+      overflow: hidden;
+    }
+
+    @keyframes modal-in {
+      from {
+        opacity: 0;
+        transform: translateY(8px) scale(.98);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      #flutter-modal-content {
+        animation: none;
+      }
+
+      #close-flutter-modal {
+        transition: none;
+      }
+    }
   </style>
 </head>
 
@@ -686,6 +791,17 @@
   <div id="app-loader">
     <div class="spinner"></div>
     <p>Loading app, please wait...</p>
+  </div>
+
+  <!-- Registration modal host. Deliberately empty: the GTM tag injects
+       #flutter-app-iframe into #flutter-modal-content on trigger, so no
+       third-party frame loads until the visitor asks for it. Kept as a sibling
+       of #landing so enterApp() hiding the landing page can't hide the modal. -->
+  <div id="flutter-modal-container" role="dialog" aria-modal="true" aria-hidden="true"
+    aria-label="Register your store">
+    <div id="flutter-modal-content">
+      <button id="close-flutter-modal" type="button" aria-label="Close registration">&times;</button>
+    </div>
   </div>
 
   <div id="landing">

@@ -36,6 +36,10 @@ dependencies:
   google_mlkit_text_recognition: ^0.16.0
   unified_esc_pos_printer: ^3.4.0
   http: ^1.2.0
+  # Browser interop for the embedded-registration bridge (postMessage to the
+  # marketing site). Replaces dart:html, which is deprecated and unavailable
+  # when compiling to Wasm.
+  web: ^1.1.0
 
 dev_dependencies:
   flutter_test:

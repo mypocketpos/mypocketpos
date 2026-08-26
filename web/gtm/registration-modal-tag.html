@@ -1,0 +1,148 @@
+<!--
+  GTM Custom HTML Tag — "Registration Modal"
+  ==========================================
+  This file is the version-controlled copy of a tag that lives in Google Tag
+  Manager. It is NOT loaded by the site; paste its contents into the Custom
+  HTML tag body and keep the two in sync.
+
+  Requires the #flutter-modal-container markup in web/index.html.
+  The Flutter side of the contract lives in
+  lib/core/web/parent_modal_bridge.dart — the CLOSE_MESSAGE string and the
+  trusted origin must match on both ends.
+
+  Tag settings:
+    - Type:    Custom HTML
+    - Trigger: whatever should open the modal (e.g. Click on "Register store")
+    - Leave "Support document.write" UNCHECKED.
+-->
+<script>
+  (function () {
+    'use strict';
+
+    // ── Configuration ──────────────────────────────────────────────────────
+    // Two required query/hash parts, both easy to lose:
+    //   app=1            → index.html auto-calls enterApp(), so the iframe
+    //                      boots the Flutter engine instead of rendering the
+    //                      marketing landing overlay inside the modal.
+    //   #/store-register → the app uses hash routing (no usePathUrlStrategy),
+    //                      and the route is /store-register, not /registration.
+    // buildUrl() appends &embed=1 before the '#'.
+    var APP_URL = 'https://mypocketpos.in/?app=1#/store-register';
+    // Origins allowed to send us the close signal. Must be scheme + host
+    // (+ port), no trailing slash — this is compared against event.origin.
+    var TRUSTED_ORIGINS = ['https://mypocketpos.in'];
+    var CLOSE_MESSAGE = 'close_registration_modal';
+
+    var container = document.getElementById('flutter-modal-container');
+    var content = document.getElementById('flutter-modal-content');
+    if (!container || !content) return; // markup missing — fail silently
+
+    // The tag can fire more than once per page. Everything below is written to
+    // be idempotent, and the listeners are attached only on the first run.
+    var state = window.__pocketPosModal;
+    var firstRun = !state;
+    if (firstRun) state = window.__pocketPosModal = { lastFocus: null };
+
+    function buildUrl() {
+      // `embed=1` tells the Flutter app it is inside the modal, so it can show
+      // its own Close button. Appended before any '#' so it lands in the query
+      // string rather than the hash route.
+      var hash = '';
+      var url = APP_URL;
+      var h = url.indexOf('#');
+      if (h !== -1) {
+        hash = url.slice(h);
+        url = url.slice(0, h);
+      }
+      return url + (url.indexOf('?') === -1 ? '?' : '&') + 'embed=1' + hash;
+    }
+
+    function ensureIframe() {
+      // Reuse the existing frame so repeat triggers don't stack iframes (and
+      // don't reload a part-filled form).
+      var iframe = document.getElementById('flutter-app-iframe');
+      if (iframe) return iframe;
+
+      iframe = document.createElement('iframe');
+      iframe.id = 'flutter-app-iframe';
+      iframe.src = buildUrl();
+      iframe.title = 'Register your store';
+      iframe.setAttribute('loading', 'lazy');
+      iframe.setAttribute('allow', 'clipboard-write; camera');
+      // No `sandbox`: the Flutter app signs in with Firebase Auth, which needs
+      // same-origin access to IndexedDB. A sandbox without allow-same-origin
+      // breaks login; one with it grants little, since the frame is first-party.
+      content.appendChild(iframe);
+      return iframe;
+    }
+
+    function openModal() {
+      ensureIframe();
+      state.lastFocus = document.activeElement;
+      container.classList.add('is-open');
+      container.setAttribute('aria-hidden', 'false');
+      document.body.classList.add('modal-open');
+      var closeBtn = document.getElementById('close-flutter-modal');
+      if (closeBtn) closeBtn.focus();
+    }
+
+    function closeModal() {
+      if (!container.classList.contains('is-open')) return;
+      container.classList.remove('is-open');
+      container.setAttribute('aria-hidden', 'true');
+      document.body.classList.remove('modal-open');
+      // Return focus to whatever opened the modal.
+      if (state.lastFocus && typeof state.lastFocus.focus === 'function') {
+        state.lastFocus.focus();
+      }
+      state.lastFocus = null;
+      // To discard a part-filled form instead of caching it, uncomment:
+      // var f = document.getElementById('flutter-app-iframe');
+      // if (f) f.parentNode.removeChild(f);
+    }
+
+    if (firstRun) {
+      // ── Close signal from inside the Flutter app ────────────────────────
+      window.addEventListener('message', function (event) {
+        // 1. Origin must be on the allowlist. Never trust event.data alone.
+        if (TRUSTED_ORIGINS.indexOf(event.origin) === -1) return;
+
+        // 2. The message must come from our iframe, not another frame that
+        //    happens to sit on a trusted origin.
+        var iframe = document.getElementById('flutter-app-iframe');
+        if (!iframe || event.source !== iframe.contentWindow) return;
+
+        // 3. Accept a bare string or {type:'...'} so the Flutter side can
+        //    evolve to a richer payload without breaking this tag.
+        var data = event.data;
+        var message = typeof data === 'string'
+          ? data
+          : (data && typeof data === 'object' ? data.type : null);
+        if (message !== CLOSE_MESSAGE) return;
+
+        closeModal();
+      }, false);
+
+      // ── Close from the parent page ──────────────────────────────────────
+      var closeBtn = document.getElementById('close-flutter-modal');
+      if (closeBtn) closeBtn.addEventListener('click', closeModal);
+
+      // Backdrop click — only when the backdrop itself is the target, so a
+      // click that started inside the card doesn't dismiss it.
+      container.addEventListener('click', function (event) {
+        if (event.target === container) closeModal();
+      });
+
+      // Escape key, expected of any modal.
+      document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' || event.keyCode === 27) closeModal();
+      });
+
+      // Let other tags / page code drive the modal too.
+      window.pocketPosOpenRegistration = openModal;
+      window.pocketPosCloseRegistration = closeModal;
+    }
+
+    openModal();
+  })();
+</script>
