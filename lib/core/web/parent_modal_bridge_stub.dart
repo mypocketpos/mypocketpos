@@ -10,3 +10,6 @@ bool get isEmbeddedInParent => false;
 
 /// No-op off the web.
 void closeParentModal() {}
+
+/// No-op off the web.
+void notifyRegistrationComplete() {}

@@ -23,7 +23,13 @@ bool get isEmbeddedInParent =>
 ///
 /// Safe to call unconditionally — when the app is not embedded, the message is
 /// addressed to an origin the browser won't deliver to, so nothing happens.
-void closeParentModal() {
+void closeParentModal() => _postToParent(kCloseRegistrationModal);
+
+/// Tells the host that registration succeeded, so it can retire the prompt
+/// instead of leaving the sticky tab behind.
+void notifyRegistrationComplete() => _postToParent(kRegistrationComplete);
+
+void _postToParent(String message) {
   final parent = web.window.parent;
   if (parent == null) return;
 
@@ -32,6 +38,6 @@ void closeParentModal() {
   // avoids ever falling back to '*', which would broadcast the message to
   // whatever page happens to be framing us.
   for (final origin in kTrustedParentOrigins) {
-    parent.postMessage(kCloseRegistrationModal.toJS, origin.toJS);
+    parent.postMessage(message.toJS, origin.toJS);
   }
 }

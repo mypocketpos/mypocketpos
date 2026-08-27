@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/database/seed/demo_business_type.dart';
+import '../../../core/web/parent_modal_bridge.dart';
 import 'store_auth_controller.dart';
 
 class StoreRegisterPage extends ConsumerStatefulWidget {
@@ -48,8 +49,13 @@ class _StoreRegisterPageState extends ConsumerState<StoreRegisterPage> {
       final err = ref.read(storeAuthControllerProvider).error;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(err ?? 'Registration failed')));
+      return;
     }
-    // On success the router redirect moves to the pending-approval screen.
+    // Registered. When this page is running inside the marketing site's modal,
+    // tell the host to retire the prompt — the visitor has no reason to see the
+    // registration nudge again. No-op when not embedded.
+    notifyRegistrationComplete();
+    // The router redirect then moves to the pending-approval screen.
   }
 
   String? _required(String? v) =>

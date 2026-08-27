@@ -7,7 +7,17 @@ library;
 
 /// The exact payload the parent's GTM listener matches on. Changing this string
 /// requires changing the GTM tag in lockstep.
+///
+/// Dismissal only — the host collapses the modal to its sticky tab, so the
+/// visitor can reopen it.
 const String kCloseRegistrationModal = 'close_registration_modal';
+
+/// Sent once registration actually succeeds.
+///
+/// Unlike [kCloseRegistrationModal] this retires the prompt for good: the host
+/// closes the modal and removes the sticky tab, because there is nothing left
+/// to nudge the visitor about.
+const String kRegistrationComplete = 'registration_complete';
 
 /// Origins permitted to embed this app.
 ///
