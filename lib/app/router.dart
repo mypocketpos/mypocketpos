@@ -27,6 +27,7 @@ import '../features/store/presentation/pending_approval_page.dart';
 import '../features/store/presentation/public_storefront_page.dart';
 import '../features/store/presentation/shop_owner_profile_page.dart';
 import '../features/store/presentation/store_auth_controller.dart';
+import '../features/store/presentation/activation_page.dart';
 import '../features/store/presentation/store_login_page.dart';
 import '../features/store/presentation/store_register_page.dart';
 import '../features/suppliers/presentation/supplier_page.dart';
@@ -50,6 +51,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       const authRoutes = {
         '/store-login',
         '/store-register',
+        '/activate',
         '/admin-login',
         '/storefront',
       };
@@ -75,6 +77,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
           path: '/store-register',
           builder: (context, state) => const StoreRegisterPage()),
+      GoRoute(
+          path: '/activate',
+          builder: (context, state) => ActivationPage(
+                storeId: state.uri.queryParameters['storeId'],
+                token: state.uri.queryParameters['token'],
+              )),
       GoRoute(
           path: '/pending',
           builder: (context, state) => const PendingApprovalPage()),

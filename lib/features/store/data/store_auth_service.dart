@@ -1,15 +1,18 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'package:pocket_pos/core/constants/app_constants.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/database/seed/demo_business_type.dart';
+import '../../../core/firestore/store_catalog_seeder.dart';
 import '../../../core/models/storefront_shopping_config.dart';
 import '../../notifications/domain/domain.dart';
-import '../../../core/firestore/store_catalog_seeder.dart';
 import '../domain/store_models.dart';
 
 /// Firebase-backed multi-tenant auth: store registration, store-scoped login
@@ -25,10 +28,6 @@ class StoreAuthService {
   static const _prefsStoreId = 'active_store_id';
   static const _prefsAdmin = 'is_platform_admin';
 
-  // Firebase Auth / Firestore calls occasionally never complete on Android (a
-  // stalled reCAPTCHA / Play-Integrity handshake, or an unreachable backend),
-  // which would leave the login spinner hanging forever. Cap every network
-  // step so a stall surfaces as a clear error instead.
   static const _netTimeout = Duration(seconds: 25);
 
   Never _timedOut(String what) => throw Exception(
@@ -41,13 +40,11 @@ class StoreAuthService {
                 'added to this Firebase project.',
       );
 
-  // Firebase Auth is email-based; we synthesize a per-store email so the same
-  // username can exist in different stores.
   String _emailFor(String storeId, String username) =>
       '${username.trim().toLowerCase()}@${storeId.trim().toLowerCase()}.pocketpos.app';
 
   String _generateStoreId() {
-    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no ambiguous chars
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
     final rnd = Random.secure();
     final code =
         List.generate(6, (_) => chars[rnd.nextInt(chars.length)]).join();
@@ -74,16 +71,11 @@ class StoreAuthService {
     String? mobile,
     String? email,
   }) async {
-    // One email = one store: the contact email must be unique across the
-    // platform. We reserve it atomically in `email_index` right after creating
-    // the auth account (below).
     final emailKey = (email ?? '').trim().toLowerCase();
     if (emailKey.isEmpty) {
       throw Exception('Email is required.');
     }
 
-    // Generated locally (no pre-read: the caller isn't signed in yet, and the
-    // id space is large). Firestore's create rule guards against a real clash.
     final storeId = _generateStoreId();
     final cred = await _auth
         .createUserWithEmailAndPassword(
@@ -94,8 +86,6 @@ class StoreAuthService {
             onTimeout: () => _timedOut('Creating your account'));
     final uid = cred.user!.uid;
 
-    // Reserve the email atomically. The transaction fails (and no store is
-    // created) if another store already registered this address.
     final emailRef = _db.collection('email_index').doc(emailKey);
     try {
       await _db.runTransaction((tx) async {
@@ -118,10 +108,8 @@ class StoreAuthService {
       rethrow;
     }
 
-    // Email reserved — create the store. On any failure, release the
-    // reservation and the auth account so the email can be reused.
     try {
-      await _storeDoc(storeId).set({
+      final storeData = {
         'storeId': storeId,
         'name': storeName.trim(),
         'ownerName': ownerName.trim(),
@@ -132,7 +120,9 @@ class StoreAuthService {
         'businessType': businessType.name,
         'status': 'pending',
         'createdAt': FieldValue.serverTimestamp(),
-      });
+      };
+
+      await _storeDoc(storeId).set(storeData);
 
       await _storeDoc(storeId).collection('users').doc(uid).set({
         'username': ownerUsername.trim(),
@@ -140,15 +130,27 @@ class StoreAuthService {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      // Index for session restore (uid -> storeId).
       await _db
           .collection('user_store_index')
           .doc(uid)
           .set({'storeId': storeId});
 
-      // Seed the chosen business type's demo catalog (categories, products,
-      // opening stock) into the new store.
       await StoreCatalogSeeder(_db).load(businessType, storeId);
+
+      // Send registration email (fire-and-forget, but we log failures).
+      // On error, the store is still created; email delivery is non-critical.
+      unawaited(_triggerAppsScriptWebhook(storeId, {
+        'name': storeName.trim(),
+        'ownerName': ownerName.trim(),
+        'ownerUsername': ownerUsername.trim(),
+        'mobile': mobile?.trim(),
+        'email': emailKey,
+        'businessType': businessType.name,
+      }).catchError((error) {
+        if (kDebugMode) {
+          print('⚠️ Registration email webhook failed (store still created): $error');
+        }
+      }));
     } catch (e) {
       await emailRef.delete().catchError((_) {});
       await _safeDeleteUser(cred.user);
@@ -159,15 +161,46 @@ class StoreAuthService {
     return storeId;
   }
 
-  /// Best-effort cleanup of a just-created auth account when registration is
-  /// aborted (e.g. the email was already taken). A freshly created user can be
-  /// deleted without re-authentication; failures are non-fatal.
-  Future<void> _safeDeleteUser(User? user) async {
+  /// Calls the Google Apps Script Web App to send the registration email.
+  ///
+  /// The webhook generates an activation token, stores it in Firestore, and sends
+  /// a welcome email with an activation link. This is awaitable so the caller can
+  /// log failures, though the store is still created if the email fails.
+  Future<void> _triggerAppsScriptWebhook(
+      String storeId, Map<String, dynamic> storeData) async {
+    const endpoint = AppConstants.cartSessionEndpoint;
+    if (endpoint.isEmpty) {
+      if (kDebugMode) {
+        print('⚠️ Cart session endpoint not configured; skipping registration email');
+      }
+      return;
+    }
+
     try {
-      await user?.delete();
-    } catch (_) {
-      // Leaves an orphan auth account with a unique synthesized email; harmless
-      // because no store is attached and a retry generates a fresh store id.
+      final response = await http
+          .post(
+            Uri.parse(endpoint),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'storeId': storeId,
+              'storeData': storeData,
+            }),
+          )
+          .timeout(_netTimeout, onTimeout: () => _timedOut('Registration email'));
+
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      if (json['success'] == true) {
+        if (kDebugMode) {
+          print('✅ Registration email sent: ${json['emailId']}');
+        }
+      } else {
+        throw Exception(json['error'] ?? 'Unknown error');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('⚠️ Registration email failed: $e');
+      }
+      rethrow;
     }
   }
 
@@ -222,8 +255,6 @@ class StoreAuthService {
     );
   }
 
-  /// Platform-admin login (email + password). The user must be listed in
-  /// `platform_admins/{uid}`.
   Future<void> adminLogin({
     required String email,
     required String password,
@@ -239,7 +270,6 @@ class StoreAuthService {
     await _persist(storeId: null, isAdmin: true);
   }
 
-  /// Restores a session on app start (if a Firebase user is still signed in).
   Future<StoreAuthState> restore() async {
     final user = _auth.currentUser;
     if (user == null) {
@@ -268,7 +298,6 @@ class StoreAuthService {
     );
   }
 
-  /// Live stream of pending stores for the admin approval screen.
   Stream<List<StoreRecord>> watchStoresByStatus(StoreStatus status) {
     return _db
         .collection('stores')
@@ -337,7 +366,6 @@ class StoreAuthService {
         onTimeout: () => throw TimeoutException(timeoutLabel),
       );
     } on TimeoutException {
-      // If network transport stalls but cache has the doc, allow login/restore.
       final cached = await cacheRead();
       if (cached.exists) return cached;
       _timedOut(timeoutLabel);
@@ -349,10 +377,14 @@ class StoreAuthService {
     if (storeId != null) await prefs.setString(_prefsStoreId, storeId);
     await prefs.setBool(_prefsAdmin, isAdmin);
   }
+
+  Future<void> _safeDeleteUser(User? user) async {
+    try {
+      await user?.delete();
+    } catch (_) {}
+  }
 }
 
-/// Thrown inside the registration transaction when the email is already
-/// reserved by another store. Kept private to the auth service.
 class _EmailTakenException implements Exception {
   const _EmailTakenException();
 }
