@@ -85,9 +85,13 @@ service cloud.firestore {
                     && request.resource.data.ownerUid == request.auth.uid
                     && request.resource.data.storeId == storeId;
 
+      // Allow unauthenticated reads for email activation.
+      // Activation page reads the store doc to verify the token before updating.
       allow get: if isStoreMember(storeId)
                  || isPlatformAdmin()
-                 || isCustomerCart();
+                 || isCustomerCart()
+                 || (!isSignedIn() && resource.data.status == 'pending');
+
 
       // Only the admin console lists stores (the pending-approval queue).
       allow list: if isPlatformAdmin();
@@ -97,10 +101,14 @@ service cloud.firestore {
       // `status` and `ownerUid` have to come back unchanged. The owner-profile
       // screen saves with a merge set, so request.resource.data holds the
       // merged document and these comparisons see the existing values.
+      // Unauthenticated email activation: only allow pending → approved transition.
       allow update: if isPlatformAdmin()
                     || (isStoreMember(storeId)
                         && request.resource.data.status == resource.data.status
-                        && request.resource.data.ownerUid == resource.data.ownerUid);
+                        && request.resource.data.ownerUid == resource.data.ownerUid)
+                    || (!isSignedIn()
+                        && resource.data.status == 'pending'
+                        && request.resource.data.status == 'approved');
 
       allow delete: if isPlatformAdmin();
 
