@@ -1,0 +1,21 @@
+<section id="subscriptions" class="subs-wrap" aria-labelledby="subs-heading">
+  <div class="subs-head">
+    <p class="subs-kicker">Pricing</p>
+    <h2 id="subs-heading">Choose a plan that fits your counter</h2>
+    <p class="subs-copy">
+      Transparent subscription plans from MyPocketPOS. Start with a trial and
+      scale as your store grows.
+    </p>
+  </div>
+
+  <div class="subs-cycle" role="tablist" aria-label="Billing cycle">
+    <button type="button" id="subs-cycle-monthly" class="cycle-btn is-active" aria-selected="true">Monthly</button>
+    <button type="button" id="subs-cycle-yearly" class="cycle-btn" aria-selected="false">Yearly</button>
+  </div>
+
+  <div id="subs-loading" class="subs-state">Loading plans...</div>
+  <div id="subs-empty" class="subs-state" hidden>No active plans are available right now.</div>
+  <div id="subs-error" class="subs-state subs-state-error" hidden>Unable to load plans right now. Please try again shortly.</div>
+
+  <div id="subs-grid" class="subs-grid" hidden></div>
+</section>

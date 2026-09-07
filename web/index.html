@@ -131,6 +131,8 @@
   }
   </script>
 
+  <link rel="stylesheet" href="subscriptions.css">
+
   <style>
     :root {
       --brand: #005D4D;
@@ -1044,6 +1046,10 @@
         </div>
       </section>
 
+      <section id="pricing" style="background:#eef6f4">
+        <div id="subscriptions-mount"></div>
+      </section>
+
       <!-- How it works -->
       <section id="how">
         <div class="wrap">
@@ -1138,6 +1144,29 @@
     </footer>
   </div>
 
+  <!-- Boot the Flutter POS app in the background (async, non-blocking so the
+       landing paints instantly and stays crawlable). The #landing overlay
+       covers it until the user chooses to enter. -->
+    <script defer src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.13.2/firebase-analytics-compat.js"></script>
+    <script>
+      // Initialize Firebase (fallback config)
+      const firebaseConfig = {
+        apiKey: "AIzaSyBDHpJHhF_Q1wP_uJf5MhV4cBxJ3xP4L8c",
+        authDomain: "pocketpos-firebase.firebaseapp.com",
+        projectId: "pocketpos-firebase",
+        storageBucket: "pocketpos-firebase.appspot.com",
+        messagingSenderId: "123456789012",
+        appId: "1:123456789012:web:abcdef1234567890"
+      };
+      if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+      }
+    </script>
+    <script src="subscriptions.js" defer></script>
+  <script src="sqljs/sql-asm.js" defer></script>
+  <script src="flutter_bootstrap.js" async></script>
   <script>
     var appInitializing = false;
 

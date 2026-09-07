@@ -6,16 +6,8 @@ rules_version = '2';
 // reachable only by that store's members (`stores/{storeId}/users/{uid}`), by a
 // platform admin, or — for the public storefront — by the holder of a scoped
 // `customer_cart` custom token minted by the Apps Script cart-session endpoint.
-//
-// Platform weighbridge operators (docs in /weighbridge_operators/{uid}, once
-// approved) may read a mill's catalog and create PENDING vehicle entries in
-// any store; only store members can approve them.
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // ──────────────────────────────────────────────────────────────────────
-    // AUTHENTICATION HELPERS
-    // ──────────────────────────────────────────────────────────────────────
 
     function isSignedIn() {
       return request.auth != null;
@@ -80,21 +72,7 @@ service cloud.firestore {
 
     // Platform config — platform admins only.
     match /platform_config/{docId} {
-      allow get: if isPlatformAdmin()
-                  || (isSignedIn() && docId == 'referral_settings');
-      allow list, write: if isPlatformAdmin();
-    }
-
-    // Platform subscription plans (authoritative plan catalog).
-    // Public users can read only active, public-visible, non-deleted plans.
-    match /platform_subscription_plans/{planId} {
-      allow get, list: if isPlatformAdmin()
-        || (
-          resource.data.isActive == true
-          && resource.data.publicVisible == true
-          && resource.data.deletedAt == null
-        );
-      allow create, update, delete: if isPlatformAdmin();
+      allow read, write: if isPlatformAdmin();
     }
 
     match /stores/{storeId} {
@@ -127,11 +105,7 @@ service cloud.firestore {
       allow update: if isPlatformAdmin()
                     || (isStoreMember(storeId)
                         && request.resource.data.status == resource.data.status
-                && request.resource.data.ownerUid == resource.data.ownerUid
-                && request.resource.data.subscriptionStatus == resource.data.subscriptionStatus
-                && request.resource.data.subscriptionPlanId == resource.data.subscriptionPlanId
-                && request.resource.data.subscriptionCurrentPeriodEnd == resource.data.subscriptionCurrentPeriodEnd
-                && request.resource.data.subscriptionUpdatedAt == resource.data.subscriptionUpdatedAt)
+                        && request.resource.data.ownerUid == resource.data.ownerUid)
                     || (!isSignedIn()
                         && resource.data.status == 'pending'
                         && request.resource.data.status == 'approved');
@@ -181,25 +155,9 @@ service cloud.firestore {
                              || isCustomerCartToken(storeId, resource.data.cartId);
       }
 
-  // ────────────────────────────────────────────────────────────────────
-      // SUBSCRIPTIONS (store lifecycle + backend-projected entitlements)
-      // ────────────────────────────────────────────────────────────────────
-
-      match /customer_subscriptions/{subscriptionId} {
-        allow read: if isStoreMember(storeId) || isPlatformAdmin();
-        allow create, update, delete: if isPlatformAdmin();
-      }
-
-      match /subscription_state/{docId} {
-        allow read: if isStoreMember(storeId) || isPlatformAdmin();
-        // Trusted-backend projected state only (Cloud Functions/Admin SDK bypass rules).
-        allow create, update, delete: if false;
-      }
-
       // Everything else under a store (inventory, warehouses, sales, settings,
       // ...) is members-only. Storefront customers deliberately have no access
       // here — the client skips stock lookups for customer sessions.
-
       match /{document=**} {
         allow read, write: if isStoreMember(storeId) || isPlatformAdmin();
       }

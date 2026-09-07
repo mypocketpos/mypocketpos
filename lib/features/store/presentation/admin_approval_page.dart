@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/models/storefront_shopping_config.dart';
 import '../../notifications/domain/domain.dart';
@@ -78,6 +79,11 @@ class AdminApprovalPage extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Store Approvals'),
         actions: [
+          IconButton(
+            tooltip: 'Manage subscriptions',
+            icon: const Icon(Icons.subscriptions_rounded),
+            onPressed: () => context.push('/admin/subscriptions'),
+          ),
           IconButton(
             tooltip: 'Logout',
             icon: const Icon(Icons.logout),

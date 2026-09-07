@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:pocket_pos/features/subscription/presentation/admin_subscription_page.dart';
 
 import '../features/auth/domain/auth_models.dart';
 import '../features/categories/presentation/category_page.dart';
@@ -63,7 +64,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         case StoreAuthStage.pending:
           return loc == '/pending' ? null : '/pending';
         case StoreAuthStage.admin:
-          return loc == '/admin' ? null : '/admin';
+          return loc.startsWith('/admin') ? null : '/admin';
         case StoreAuthStage.active:
           if (authRoutes.contains(loc) || loc == '/pending')
             return '/dashboard';
@@ -92,6 +93,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
           path: '/admin',
           builder: (context, state) => const AdminApprovalPage()),
+      GoRoute(
+          path: '/admin/subscriptions',
+          builder: (context, state) => const AdminSubscriptionPage()),
       GoRoute(
           path: '/storefront',
           builder: (context, state) => const PublicStorefrontPage()),

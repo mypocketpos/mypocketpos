@@ -1,4 +1,4 @@
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated, onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
@@ -8,8 +8,9 @@ admin.initializeApp();
 
 const db = admin.firestore();
 const resendApiKey = defineSecret("RESEND_API_KEY");
-const twilioAccountSid = defineSecret("TWILIO_ACCOUNT_SID");
-const twilioAuthToken = defineSecret("TWILIO_AUTH_TOKEN");
+// Commented out for now - enable when setting up Twilio SMS/WhatsApp
+// const twilioAccountSid = defineSecret("TWILIO_ACCOUNT_SID");
+// const twilioAuthToken = defineSecret("TWILIO_AUTH_TOKEN");
 
 const INFO_EMAIL = "info@mypocketpos.in";
 
@@ -57,6 +58,7 @@ function readEmailFeatureFlags(map) {
   return parseChannelConfig(map, "email");
 }
 
+/* Twilio configuration reader commented out
 function readSmsFeatureFlags(map) {
   return parseChannelConfig(map, "sms");
 }
@@ -64,6 +66,7 @@ function readSmsFeatureFlags(map) {
 function readWhatsappFeatureFlags(map) {
   return parseChannelConfig(map, "whatsapp");
 }
+*/
 
 function normalizePhone(value) {
   if (typeof value !== "string") return null;
@@ -86,8 +89,8 @@ async function appendNotificationLog(entry) {
   });
 }
 
+/* Twilio API integration commented out
 async function sendViaTwilio({ from, to, body, accountSid, authToken }) {
-
   const endpoint =
     `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
   const auth = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
@@ -111,6 +114,7 @@ async function sendViaTwilio({ from, to, body, accountSid, authToken }) {
     throw new Error(`Twilio send failed (${resp.status}): ${text}`);
   }
 }
+*/
 
 function readSecretValue(secretParam) {
   try {
@@ -127,7 +131,7 @@ exports.sendWelcomeEmailOnStoreRegistration = onDocumentCreated(
   {
     document: "stores/{storeId}",
     region: "asia-south1",
-    secrets: [resendApiKey, twilioAccountSid, twilioAuthToken],
+    secrets: [resendApiKey /*, twilioAccountSid, twilioAuthToken */],
     timeoutSeconds: 30,
     memory: "256MiB",
   },
@@ -141,9 +145,6 @@ exports.sendWelcomeEmailOnStoreRegistration = onDocumentCreated(
     const storeId = event.params.storeId;
     const store = storeSnap.data() || {};
     const ownerEmail = typeof store.email === "string" ? store.email.trim() : "";
-    const normalizedMobile = normalizePhone(
-      typeof store.mobile === "string" ? store.mobile : ""
-    );
 
     let config;
     try {
@@ -159,12 +160,7 @@ exports.sendWelcomeEmailOnStoreRegistration = onDocumentCreated(
     }
 
     const emailCfg = readEmailFeatureFlags(config);
-    const smsCfg = readSmsFeatureFlags(config);
-    const whatsappCfg = readWhatsappFeatureFlags(config);
-
     const defaultResendApiKey = readSecretValue(resendApiKey);
-    const defaultTwilioAccountSid = readSecretValue(twilioAccountSid);
-    const defaultTwilioAuthToken = readSecretValue(twilioAuthToken);
 
     const storeName =
       typeof store.name === "string" && store.name.trim().length > 0
@@ -195,9 +191,6 @@ exports.sendWelcomeEmailOnStoreRegistration = onDocumentCreated(
       "Regards,",
       "Pocket POS Team",
     ].join("\n");
-
-    const smsBody = `Welcome to Pocket POS, ${ownerName}. Your Store ID is ${storeId}. ` +
-      "Your store is pending approval. We will notify you once approved.";
 
     const htmlBody = `
       <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #222;">
@@ -279,163 +272,252 @@ exports.sendWelcomeEmailOnStoreRegistration = onDocumentCreated(
       );
     }
 
-    if (smsCfg.enabled) {
-      if (!normalizedMobile) {
-        tasks.push(
-          appendNotificationLog({
-            channel: "sms",
-            template: "welcome_registration",
-            storeId,
-            status: "skipped",
-            reason: "missing_or_invalid_mobile",
-          })
-        );
-      } else if (!smsCfg.fromNumber) {
-        tasks.push(
-          appendNotificationLog({
-            channel: "sms",
-            template: "welcome_registration",
-            storeId,
-            to: normalizedMobile,
-            status: "skipped",
-            reason: "missing_sms_from_number",
-          })
-        );
-      } else {
-        tasks.push((async () => {
-          try {
-            const accountSid = smsCfg.accountSid || defaultTwilioAccountSid;
-            const authToken = smsCfg.authToken || defaultTwilioAuthToken;
-            if (!accountSid || !authToken) {
-              throw new Error("Missing Twilio credentials for SMS channel.");
-            }
-            await sendViaTwilio({
-              from: smsCfg.fromNumber,
-              to: normalizedMobile,
-              body: smsBody,
-              accountSid,
-              authToken,
-            });
+    /* SMS Block Commented Out
+    if (smsCfg.enabled) { ... }
+    */
 
-            await appendNotificationLog({
-              channel: "sms",
-              template: "welcome_registration",
-              storeId,
-              to: normalizedMobile,
-              status: "sent",
-            });
-          } catch (err) {
-            logger.error("Welcome SMS send failed.", {
-              storeId,
-              to: normalizedMobile,
-              error: String(err),
-            });
-
-            await appendNotificationLog({
-              channel: "sms",
-              template: "welcome_registration",
-              storeId,
-              to: normalizedMobile,
-              status: "failed",
-              error: String(err),
-            });
-          }
-        })());
-      }
-    } else {
-      tasks.push(
-        appendNotificationLog({
-          channel: "sms",
-          template: "welcome_registration",
-          storeId,
-          status: "skipped",
-          reason: "feature_disabled",
-        })
-      );
-    }
-
-    if (whatsappCfg.enabled) {
-      if (!normalizedMobile) {
-        tasks.push(
-          appendNotificationLog({
-            channel: "whatsapp",
-            template: "welcome_registration",
-            storeId,
-            status: "skipped",
-            reason: "missing_or_invalid_mobile",
-          })
-        );
-      } else if (!whatsappCfg.fromNumber) {
-        tasks.push(
-          appendNotificationLog({
-            channel: "whatsapp",
-            template: "welcome_registration",
-            storeId,
-            to: normalizedMobile,
-            status: "skipped",
-            reason: "missing_whatsapp_from_number",
-          })
-        );
-      } else {
-        tasks.push((async () => {
-          const whatsappTo = normalizedMobile.startsWith("whatsapp:")
-            ? normalizedMobile
-            : `whatsapp:${normalizedMobile}`;
-          const whatsappFrom = whatsappCfg.fromNumber.startsWith("whatsapp:")
-            ? whatsappCfg.fromNumber
-            : `whatsapp:${whatsappCfg.fromNumber}`;
-          try {
-            const accountSid = whatsappCfg.accountSid || defaultTwilioAccountSid;
-            const authToken = whatsappCfg.authToken || defaultTwilioAuthToken;
-            if (!accountSid || !authToken) {
-              throw new Error("Missing Twilio credentials for WhatsApp channel.");
-            }
-            await sendViaTwilio({
-              from: whatsappFrom,
-              to: whatsappTo,
-              body: smsBody,
-              accountSid,
-              authToken,
-            });
-
-            await appendNotificationLog({
-              channel: "whatsapp",
-              template: "welcome_registration",
-              storeId,
-              to: whatsappTo,
-              status: "sent",
-            });
-          } catch (err) {
-            logger.error("Welcome WhatsApp send failed.", {
-              storeId,
-              to: whatsappTo,
-              error: String(err),
-            });
-
-            await appendNotificationLog({
-              channel: "whatsapp",
-              template: "welcome_registration",
-              storeId,
-              to: whatsappTo,
-              status: "failed",
-              error: String(err),
-            });
-          }
-        })());
-      }
-    } else {
-      tasks.push(
-        appendNotificationLog({
-          channel: "whatsapp",
-          template: "welcome_registration",
-          storeId,
-          status: "skipped",
-          reason: "feature_disabled",
-        })
-      );
-    }
+    /* WhatsApp Block Commented Out
+    if (whatsappCfg.enabled) { ... }
+    */
 
     // Fail-safe: notification pipeline is best effort. Never throw from trigger.
     await Promise.allSettled(tasks);
   }
 );
+
+function readTimestamp(value) {
+  if (!value) return null;
+  if (typeof value.toDate === "function") {
+    return value.toDate();
+  }
+  if (value instanceof Date) {
+    return value;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function toWireStatus(status) {
+  if (status === "pastDue") return "past_due";
+  return status;
+}
+
+function deriveSubscriptionStatus(rawStatus, now, periodEnd, trialEnd) {
+  const status = typeof rawStatus === "string" && rawStatus.trim().length > 0
+    ? rawStatus.trim()
+    : "pending";
+
+  const effectiveEnd = periodEnd || trialEnd;
+  if (status === "trialing" && effectiveEnd && effectiveEnd < now) {
+    return "expired";
+  }
+  if (status === "active" && effectiveEnd && effectiveEnd < now) {
+    return "past_due";
+  }
+  return status;
+}
+
+async function projectStoreSubscriptionState(storeId) {
+  const now = new Date();
+  const subsSnap = await db
+    .collection("stores")
+    .doc(storeId)
+    .collection("customer_subscriptions")
+    .orderBy("updatedAt", "desc")
+    .limit(40)
+    .get();
+
+  const preferredStatuses = ["trialing", "active", "past_due", "pending", "canceled", "expired"];
+  let chosen = null;
+  for (const status of preferredStatuses) {
+    chosen = subsSnap.docs.find((doc) => {
+      const data = doc.data() || {};
+      return (data.status || "pending") === status;
+    });
+    if (chosen) break;
+  }
+
+  const entitlementRef = db
+    .collection("stores")
+    .doc(storeId)
+    .collection("subscription_state")
+    .doc("current");
+
+  if (!chosen) {
+    await entitlementRef.set(
+      {
+        status: "pending",
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    await db.collection("stores").doc(storeId).set(
+      {
+        subscriptionStatus: "pending",
+        subscriptionPlanId: admin.firestore.FieldValue.delete(),
+        subscriptionCurrentPeriodEnd: admin.firestore.FieldValue.delete(),
+        subscriptionUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    return;
+  }
+
+  const chosenData = chosen.data() || {};
+  const planId = chosenData.planId;
+  if (typeof planId !== "string" || planId.trim().length === 0) {
+    return;
+  }
+
+  const planDoc = await db.collection("platform_subscription_plans").doc(planId).get();
+  if (!planDoc.exists) {
+    await entitlementRef.set(
+      {
+        status: "pending",
+        planId,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    return;
+  }
+
+  const plan = planDoc.data() || {};
+  const periodEnd = readTimestamp(chosenData.currentPeriodEnd);
+  const trialEnd = readTimestamp(chosenData.trialEndAt);
+  const computedStatus = deriveSubscriptionStatus(
+    chosenData.status,
+    now,
+    periodEnd,
+    trialEnd
+  );
+
+  await chosen.ref.set(
+    {
+      status: computedStatus,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  await entitlementRef.set(
+    {
+      status: computedStatus,
+      planId,
+      planName: plan.name || plan.slug || "",
+      billingCycle: plan.billingCycle || "monthly",
+      priceMinor: Number.isFinite(plan.priceMinor) ? plan.priceMinor : 0,
+      currency: typeof plan.currency === "string" ? plan.currency : "INR",
+      featureList: Array.isArray(plan.featureList) ? plan.featureList : [],
+      limits: typeof plan.limits === "object" && plan.limits !== null ? plan.limits : {},
+      effectiveFrom: chosenData.currentPeriodStart || chosenData.startedAt || null,
+      effectiveUntil: chosenData.currentPeriodEnd || chosenData.trialEndAt || null,
+      sourceSubscriptionId: chosen.id,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  await db.collection("stores").doc(storeId).set(
+    {
+      subscriptionStatus: computedStatus,
+      subscriptionPlanId: planId,
+      subscriptionCurrentPeriodEnd: chosenData.currentPeriodEnd || chosenData.trialEndAt || null,
+      subscriptionUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
+exports.syncStoreSubscriptionProjection = onDocumentWritten(
+  {
+    document: "stores/{storeId}/customer_subscriptions/{subscriptionId}",
+    region: "asia-south1",
+    timeoutSeconds: 30,
+    memory: "256MiB",
+  },
+  async (event) => {
+    const storeId = event.params.storeId;
+    try {
+      await projectStoreSubscriptionState(storeId);
+    } catch (error) {
+      logger.error("Subscription projection sync failed", {
+        storeId,
+        error: String(error),
+      });
+    }
+  }
+);
+
+exports.bootstrapStoreTrialSubscription = onDocumentCreated(
+  {
+    document: "stores/{storeId}",
+    region: "asia-south1",
+    timeoutSeconds: 30,
+    memory: "256MiB",
+  },
+  async (event) => {
+    const storeId = event.params.storeId;
+    try {
+      const storeData = event.data?.data() || {};
+      const ownerUid = storeData.ownerUid;
+
+      const plansSnap = await db
+        .collection("platform_subscription_plans")
+        .where("defaultForNewStores", "==", true)
+        .where("isActive", "==", true)
+        .where("deletedAt", "==", null)
+        .orderBy("sortOrder")
+        .limit(1)
+        .get();
+
+      if (plansSnap.empty) return;
+      const planDoc = plansSnap.docs[0];
+      const plan = planDoc.data() || {};
+      const trialDays = Number.isFinite(plan.trialDays) ? plan.trialDays : 0;
+      const safeTrialDays = trialDays > 0 ? trialDays : 14;
+
+      const now = admin.firestore.Timestamp.now();
+      const end = admin.firestore.Timestamp.fromDate(
+        new Date(Date.now() + safeTrialDays * 24 * 60 * 60 * 1000)
+      );
+
+      await db
+        .collection("stores")
+        .doc(storeId)
+        .collection("customer_subscriptions")
+        .doc("bootstrap_trial")
+        .set(
+          {
+            storeId,
+            planId: planDoc.id,
+            status: "trialing",
+            source: "backend",
+            provider: "none",
+            cancelAtPeriodEnd: false,
+            startedAt: now,
+            trialEndAt: end,
+            currentPeriodStart: now,
+            currentPeriodEnd: end,
+            metadata: {
+              seeded: true,
+              assignedBy: "bootstrapStoreTrialSubscription",
+              ownerUid: typeof ownerUid === "string" ? ownerUid : null,
+            },
+            createdAt: now,
+            updatedAt: now,
+          },
+          { merge: true }
+        );
+
+      await projectStoreSubscriptionState(storeId);
+    } catch (error) {
+      logger.error("Store trial bootstrap failed", {
+        storeId,
+        error: String(error),
+      });
+    }
+  }
+);
+// Load subscription management functions
+require('./subscriptions');
