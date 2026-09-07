@@ -94,7 +94,9 @@ service cloud.firestore {
           && resource.data.publicVisible == true
           && resource.data.deletedAt == null
         );
-      allow create, update, delete: if isPlatformAdmin();
+        
+      // Allows platform admins to create, update, and delete
+      allow write: if isPlatformAdmin();
     }
 
     match /stores/{storeId} {
