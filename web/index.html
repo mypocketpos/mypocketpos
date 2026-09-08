@@ -678,9 +678,7 @@
       }
     }
 
-    /* ── Registration modal (iframe host, injected by GTM) ──────────────────
-       Hidden until the GTM tag adds .is-open. Sits above #landing
-       (2147483000) but below #app-loader (2147483647). */
+    /* Registration modal host */
     #flutter-modal-container {
       display: none;
       position: fixed;
@@ -690,8 +688,6 @@
       backdrop-filter: blur(4px);
       padding: 20px;
       overflow-y: auto;
-      /* Centres the card and keeps it centred when it is shorter than the
-         viewport, while still allowing scroll when it is taller. */
       place-items: center;
     }
 
@@ -747,7 +743,6 @@
       outline-offset: 2px;
     }
 
-    /* Full-bleed sheet on phones — a 460px card wastes space below ~520px. */
     @media (max-width: 520px) {
       #flutter-modal-container {
         padding: 0;
@@ -761,7 +756,6 @@
       }
     }
 
-    /* Prevents the page behind the modal from scrolling. */
     body.modal-open {
       overflow: hidden;
     }
@@ -783,10 +777,7 @@
       }
     }
 
-    /* ── Collapsed registration tab ─────────────────────────────────────────
-       Where the modal goes when dismissed. Amber rather than brand green so it
-       reads as a persistent nudge, not part of the page. Sits above #landing
-       but below the modal, so re-opening covers it. */
+    /* Collapsed registration tab */
     #registration-sticky {
       --reg-tab-bg: #F5A623;
       position: fixed;
@@ -806,8 +797,6 @@
       animation: reg-tab-in .25s ease-out;
     }
 
-    /* The [hidden] attribute's display:none loses to display:flex above, so it
-       has to be restated. */
     #registration-sticky[hidden] {
       display: none;
     }
@@ -848,7 +837,6 @@
 
     #registration-sticky-open .rst-label {
       writing-mode: vertical-rl;
-      /* Rotated so the label reads bottom-to-top. */
       transform: rotate(180deg);
       text-transform: uppercase;
       letter-spacing: .14em;
@@ -894,25 +882,18 @@
   <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-TLR223SV" height="0" width="0"
       style="display:none;visibility:hidden"></iframe></noscript>
   <!-- End Google Tag Manager (noscript) -->
+
   <div id="app-loader">
     <div class="spinner"></div>
     <p>Loading app, please wait...</p>
   </div>
 
-  <!-- Registration modal host. Deliberately empty: the GTM tag injects
-       #flutter-app-iframe into #flutter-modal-content on trigger, so no
-       third-party frame loads until the visitor asks for it. Kept as a sibling
-       of #landing so enterApp() hiding the landing page can't hide the modal. -->
   <div id="flutter-modal-container" role="dialog" aria-modal="true" aria-hidden="true" aria-label="Register your store">
     <div id="flutter-modal-content">
       <button id="close-flutter-modal" type="button" aria-label="Close registration">&times;</button>
     </div>
   </div>
 
-  <!-- Collapsed state of the modal above. Hidden until the visitor dismisses
-       the popup; the GTM tag toggles it. Two separate buttons (rather than one
-       button with a nested one, which is invalid HTML): the label re-opens the
-       modal, the small × dismisses the tab for the rest of the session. -->
   <div id="registration-sticky" hidden>
     <button id="registration-sticky-dismiss" type="button" aria-label="Dismiss registration tab">&times;</button>
     <button id="registration-sticky-open" type="button" aria-label="Open registration">
@@ -1169,26 +1150,7 @@
     </footer>
   </div>
 
-  <!-- Boot the Flutter POS app in the background (async, non-blocking so the
-       landing paints instantly and stays crawlable). The #landing overlay
-       covers it until the user chooses to enter. -->
-  <script defer src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
-  <script defer src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
-  <script defer src="https://www.gstatic.com/firebasejs/10.13.2/firebase-analytics-compat.js"></script>
-  <script>
-    // Initialize Firebase (fallback config)
-    const firebaseConfig = {
-      apiKey: "AIzaSyBDHpJHhF_Q1wP_uJf5MhV4cBxJ3xP4L8c",
-      authDomain: "pocketpos-firebase.firebaseapp.com",
-      projectId: "pocketpos-firebase",
-      storageBucket: "pocketpos-firebase.appspot.com",
-      messagingSenderId: "123456789012",
-      appId: "1:123456789012:web:abcdef1234567890"
-    };
-    if (!firebase.apps.length) {
-      firebase.initializeApp(firebaseConfig);
-    }
-  </script>
+  <!-- Lightweight Pricing Loader -->
   <script src="subscriptions.js" defer></script>
   <script src="sqljs/sql-asm.js" defer></script>
   <script src="flutter_bootstrap.js" async></script>
@@ -1220,7 +1182,7 @@
           // Hide loader if script fails to load
           if (loader) loader.style.display = 'none';
           appInitializing = false;
-          alert('Failed to load application resources. Please try again.');
+          alert('Failed to load Flutter application engine. Please try again.');
         };
         flutterScript.onload = function () {
           window._flutterAppLoaded = true;

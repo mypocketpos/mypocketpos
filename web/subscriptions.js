@@ -1,215 +1,139 @@
 (function () {
-  const state = {
-    cycle: 'monthly',
-    plans: [],
-    firebaseLoaded: false
-  };
+  'use strict';
 
-  function setVisibility(el, show) {
-    if (!el) return;
-    show ? el.removeAttribute('hidden') : el.setAttribute('hidden', 'hidden');
+  // DOM Elements
+  const elPricingSection = document.getElementById('pricing');
+  const elGrid = document.getElementById('subs-grid');
+  const elLoading = document.getElementById('subs-loading');
+  const elEmpty = document.getElementById('subs-empty');
+  const elError = document.getElementById('subs-error');
+  const btnMonthly = document.getElementById('subs-cycle-monthly');
+  const btnYearly = document.getElementById('subs-cycle-yearly');
+
+  let rawPlans = [];
+  let currentCycle = 'monthly';
+
+  // Fetch plans.json from the static hosting directory
+  async function fetchPlans() {
+    try {
+      const response = await fetch('plans.json', { cache: 'no-cache' });
+      if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+
+      const data = await response.json();
+      rawPlans = Array.isArray(data) ? data : (data.plans || []);
+
+      if (rawPlans.length === 0) {
+        // Hide entire pricing section if no plans
+        if (elPricingSection) elPricingSection.style.display = 'none';
+        showState('empty');
+      } else {
+        // Show pricing section if plans exist
+        if (elPricingSection) elPricingSection.style.display = 'block';
+        renderGrid();
+        showState('grid');
+      }
+    } catch (err) {
+      console.error('Failed to load subscription plans:', err);
+      // Hide entire pricing section on error
+      if (elPricingSection) elPricingSection.style.display = 'none';
+      showState('error');
+    }
   }
 
-  function normalizeCycle(raw) {
-    return raw === 'yearly' ? 'yearly' : 'monthly';
+  // Manage section visibility
+  function showState(state) {
+    if (elLoading) elLoading.hidden = state !== 'loading';
+    if (elEmpty) elEmpty.hidden = state !== 'empty';
+    if (elError) elError.hidden = state !== 'error';
+    if (elGrid) elGrid.hidden = state !== 'grid';
   }
 
-  function formatInrMinor(minor) {
-    const safeMinor = Number.isFinite(minor) ? minor : 0;
+  // Format currency numbers safely
+  function formatCurrency(amount) {
+    if (amount === undefined || amount === null || isNaN(amount)) return '₹0';
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
-      maximumFractionDigits: 2,
-    }).format(safeMinor / 100);
+      maximumFractionDigits: 0
+    }).format(amount);
   }
 
-  function safeCtaUrl(url) {
-    if (typeof url !== 'string' || !url.trim()) return '/?app=1';
-    try {
-      const parsed = new URL(url, window.location.origin);
-      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return '/?app=1';
-      return parsed.toString();
-    } catch (_) {
-      return '/?app=1';
-    }
-  }
+  // Build HTML for plan cards
+  function renderGrid() {
+    if (!elGrid) return;
 
-  function createPlanCard(plan) {
-    const card = document.createElement('article');
-    card.className = 'sub-card';
-    if (plan.isPopular) card.classList.add('popular');
+    elGrid.innerHTML = '';
 
-    const badgeLabel = typeof plan.badgeText === 'string' && plan.badgeText.trim().length > 0
-      ? plan.badgeText.trim()
-      : (plan.isPopular ? 'Most Popular' : '');
-    
-    if (badgeLabel) {
-      const badge = document.createElement('span');
-      badge.className = 'sub-badge';
-      badge.textContent = badgeLabel;
-      card.appendChild(badge);
-    }
+    rawPlans.forEach(plan => {
+      const isYearly = currentCycle === 'yearly';
+      const price = isYearly ? plan.yearlyPrice : plan.monthlyPrice;
+      const originalPrice = isYearly ? plan.yearlyOriginalPrice : plan.monthlyOriginalPrice;
+      const isPopular = plan.isPopular || plan.popular;
 
-    const title = document.createElement('h3');
-    title.className = 'sub-title';
-    title.textContent = plan.name || 'Plan';
-    card.appendChild(title);
+      const card = document.createElement('div');
+      card.className = `subs-card ${isPopular ? 'subs-card-popular' : ''}`;
 
-    const desc = document.createElement('p');
-    desc.className = 'sub-desc';
-    desc.textContent = plan.description || '';
-    card.appendChild(desc);
-
-    const price = document.createElement('div');
-    price.className = 'sub-price';
-    price.textContent = formatInrMinor(Number(plan.priceMinor));
-    card.appendChild(price);
-
-    const unit = document.createElement('div');
-    unit.className = 'sub-price-unit';
-    unit.textContent = plan.billingCycle === 'yearly' ? 'per year' : 'per month';
-    card.appendChild(unit);
-
-    const list = document.createElement('ul');
-    list.className = 'sub-features';
-    const features = Array.isArray(plan.featureList) ? plan.featureList : [];
-    features.forEach((feature) => {
-      const text = String(feature || '').trim();
-      if (text) {
-        const item = document.createElement('li');
-        item.textContent = text;
-        list.appendChild(item);
+      let featuresHTML = '';
+      if (Array.isArray(plan.features)) {
+        featuresHTML = plan.features
+          .map(f => `<li><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg><span>${f}</span></li>`)
+          .join('');
       }
-    });
-    card.appendChild(list);
 
-    const cta = document.createElement('a');
-    cta.className = 'sub-cta';
-    cta.textContent = plan.ctaLabel && plan.ctaLabel.trim() ? plan.ctaLabel.trim() : 'Start now';
-    cta.href = safeCtaUrl(plan.ctaUrl);
-    cta.rel = 'noopener noreferrer';
-    if (cta.href.startsWith('http') && !cta.href.includes(window.location.origin)) {
-      cta.target = '_blank';
-    }
-    card.appendChild(cta);
+      card.innerHTML = `
+        ${isPopular ? '<span class="subs-badge">Most Popular</span>' : ''}
+        <h3 class="subs-title">${plan.name || 'Standard Plan'}</h3>
+        <p class="subs-desc">${plan.description || ''}</p>
+        
+        <div class="subs-price-box">
+          ${originalPrice && originalPrice > price ? `<span class="subs-original-price">${formatCurrency(originalPrice)}</span>` : ''}
+          <div class="subs-price-row">
+            <span class="subs-price">${formatCurrency(price)}</span>
+            <span class="subs-period">/${isYearly ? 'year' : 'month'}</span>
+          </div>
+        </div>
 
-    return card;
-  }
+        <button class="btn btn-primary subs-cta" data-cta="register" onclick="enterApp()">
+          ${plan.ctaText || 'Get Started'}
+        </button>
 
-  function render() {
-    const loading = document.getElementById('subs-loading');
-    const empty = document.getElementById('subs-empty');
-    const error = document.getElementById('subs-error');
-    const grid = document.getElementById('subs-grid');
-    const monthlyBtn = document.getElementById('subs-cycle-monthly');
-    const yearlyBtn = document.getElementById('subs-cycle-yearly');
+        <ul class="subs-features">
+          ${featuresHTML}
+        </ul>
+      `;
 
-    if (!grid || !loading || !empty || !error || !monthlyBtn || !yearlyBtn) return;
-
-    monthlyBtn.classList.toggle('is-active', state.cycle === 'monthly');
-    monthlyBtn.setAttribute('aria-selected', state.cycle === 'monthly' ? 'true' : 'false');
-    yearlyBtn.classList.toggle('is-active', state.cycle === 'yearly');
-    yearlyBtn.setAttribute('aria-selected', state.cycle === 'yearly' ? 'true' : 'false');
-
-    const filtered = state.plans.filter((p) => normalizeCycle(p.billingCycle) === state.cycle);
-
-    grid.textContent = '';
-    filtered.forEach((plan) => grid.appendChild(createPlanCard(plan)));
-
-    setVisibility(loading, false);
-    setVisibility(error, false);
-    setVisibility(empty, filtered.length === 0);
-    setVisibility(grid, filtered.length > 0);
-  }
-
-  // Load Firebase scripts dynamically on demand
-  function loadScript(src) {
-    return new Promise((resolve, reject) => {
-      if (document.querySelector(`script[src="${src}"]`)) return resolve();
-      const s = document.createElement('script');
-      s.src = src;
-      s.onload = resolve;
-      s.onerror = reject;
-      document.head.appendChild(s);
+      elGrid.appendChild(card);
     });
   }
 
-  async function initFirebase() {
-    if (state.firebaseLoaded) return;
-    state.firebaseLoaded = true;
+  // Toggle billing cycle listeners
+  function setupCycleToggle() {
+    if (!btnMonthly || !btnYearly) return;
 
-    try {
-      await loadScript('https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js');
-      await loadScript('https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js');
+    btnMonthly.addEventListener('click', () => {
+      if (currentCycle === 'monthly') return;
+      currentCycle = 'monthly';
+      btnMonthly.classList.add('is-active');
+      btnMonthly.setAttribute('aria-selected', 'true');
+      btnYearly.classList.remove('is-active');
+      btnYearly.setAttribute('aria-selected', 'false');
+      renderGrid();
+    });
 
-      if (!window.firebase.apps.length) {
-        window.firebase.initializeApp({
-          apiKey: "AIzaSyBDHpJHhF_Q1wP_uJf5MhV4cBxJ3xP4L8c",
-          authDomain: "pocketpos-firebase.firebaseapp.com",
-          projectId: "pocketpos-firebase",
-          storageBucket: "pocketpos-firebase.appspot.com",
-          messagingSenderId: "123456789012",
-          appId: "1:123456789012:web:abcdef1234567890"
-        });
-      }
-
-      subscribePlans(window.firebase);
-    } catch (_) {
-      showError();
-    }
+    btnYearly.addEventListener('click', () => {
+      if (currentCycle === 'yearly') return;
+      currentCycle = 'yearly';
+      btnYearly.classList.add('is-active');
+      btnYearly.setAttribute('aria-selected', 'true');
+      btnMonthly.classList.remove('is-active');
+      btnMonthly.setAttribute('aria-selected', 'false');
+      renderGrid();
+    });
   }
 
-  function showError() {
-    setVisibility(document.getElementById('subs-loading'), false);
-    setVisibility(document.getElementById('subs-empty'), false);
-    setVisibility(document.getElementById('subs-grid'), false);
-    setVisibility(document.getElementById('subs-error'), true);
-  }
-
-  function subscribePlans(firebase) {
-    firebase
-      .firestore()
-      .collection('platform_subscription_plans')
-      .where('isActive', '==', true)
-      .where('publicVisible', '==', true)
-      .where('deletedAt', '==', null)
-      .orderBy('sortOrder', 'asc')
-      .onSnapshot(
-        (snapshot) => {
-          state.plans = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-          render();
-        },
-        () => showError()
-      );
-  }
-
-  function attachEvents() {
-    const monthlyBtn = document.getElementById('subs-cycle-monthly');
-    const yearlyBtn = document.getElementById('subs-cycle-yearly');
-    if (monthlyBtn) monthlyBtn.addEventListener('click', () => { state.cycle = 'monthly'; render(); });
-    if (yearlyBtn) yearlyBtn.addEventListener('click', () => { state.cycle = 'yearly'; render(); });
-  }
-
-  // Use IntersectionObserver to lazy load Firebase only when section comes into view
-  function setupLazyObserver() {
-    const section = document.getElementById('pricing');
-    if (!section) return initFirebase();
-
-    if ('IntersectionObserver' in window) {
-      const observer = new IntersectionObserver((entries) => {
-        if (entries[0].isIntersecting) {
-          initFirebase();
-          observer.disconnect();
-        }
-      }, { rootMargin: '200px' });
-      observer.observe(section);
-    } else {
-      initFirebase();
-    }
-  }
-
+  // Initialize script on DOM ready
   document.addEventListener('DOMContentLoaded', () => {
-    attachEvents();
-    setupLazyObserver();
+    setupCycleToggle();
+    fetchPlans();
   });
 })();
