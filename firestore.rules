@@ -98,6 +98,9 @@ service cloud.firestore {
       // Allows platform admins to create, update, and delete
       allow write: if isPlatformAdmin();
     }
+    match /{path=**}/customer_subscriptions/{subscriptionId} {
+      allow read: if isPlatformAdmin();
+    }
 
     match /stores/{storeId} {
 

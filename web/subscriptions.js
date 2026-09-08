@@ -1,19 +1,13 @@
 (function () {
-  const mount = document.getElementById('subscriptions-mount');
-  if (!mount) return;
-
   const state = {
     cycle: 'monthly',
     plans: [],
+    firebaseLoaded: false
   };
 
   function setVisibility(el, show) {
     if (!el) return;
-    if (show) {
-      el.removeAttribute('hidden');
-    } else {
-      el.setAttribute('hidden', 'hidden');
-    }
+    show ? el.removeAttribute('hidden') : el.setAttribute('hidden', 'hidden');
   }
 
   function normalizeCycle(raw) {
@@ -30,14 +24,10 @@
   }
 
   function safeCtaUrl(url) {
-    if (typeof url !== 'string' || url.trim().length === 0) return '/?app=1';
+    if (typeof url !== 'string' || !url.trim()) return '/?app=1';
     try {
       const parsed = new URL(url, window.location.origin);
-      const allowedProtocol = parsed.protocol === 'https:' || parsed.protocol === 'http:';
-      if (!allowedProtocol) return '/?app=1';
-      if (parsed.origin !== window.location.origin && parsed.protocol !== 'https:') {
-        return '/?app=1';
-      }
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return '/?app=1';
       return parsed.toString();
     } catch (_) {
       return '/?app=1';
@@ -47,13 +37,12 @@
   function createPlanCard(plan) {
     const card = document.createElement('article');
     card.className = 'sub-card';
-    if (plan.isPopular === true) {
-      card.classList.add('popular');
-    }
+    if (plan.isPopular) card.classList.add('popular');
 
     const badgeLabel = typeof plan.badgeText === 'string' && plan.badgeText.trim().length > 0
       ? plan.badgeText.trim()
       : (plan.isPopular ? 'Most Popular' : '');
+    
     if (badgeLabel) {
       const badge = document.createElement('span');
       badge.className = 'sub-badge';
@@ -63,12 +52,12 @@
 
     const title = document.createElement('h3');
     title.className = 'sub-title';
-    title.textContent = typeof plan.name === 'string' ? plan.name : 'Plan';
+    title.textContent = plan.name || 'Plan';
     card.appendChild(title);
 
     const desc = document.createElement('p');
     desc.className = 'sub-desc';
-    desc.textContent = typeof plan.description === 'string' ? plan.description : '';
+    desc.textContent = plan.description || '';
     card.appendChild(desc);
 
     const price = document.createElement('div');
@@ -84,20 +73,19 @@
     const list = document.createElement('ul');
     list.className = 'sub-features';
     const features = Array.isArray(plan.featureList) ? plan.featureList : [];
-    for (const feature of features) {
-      const item = document.createElement('li');
-      item.textContent = String(feature || '').trim();
-      if (!item.textContent) continue;
-      list.appendChild(item);
-    }
+    features.forEach((feature) => {
+      const text = String(feature || '').trim();
+      if (text) {
+        const item = document.createElement('li');
+        item.textContent = text;
+        list.appendChild(item);
+      }
+    });
     card.appendChild(list);
 
     const cta = document.createElement('a');
     cta.className = 'sub-cta';
-    cta.textContent =
-      typeof plan.ctaLabel === 'string' && plan.ctaLabel.trim().length > 0
-        ? plan.ctaLabel.trim()
-        : 'Start now';
+    cta.textContent = plan.ctaLabel && plan.ctaLabel.trim() ? plan.ctaLabel.trim() : 'Start now';
     cta.href = safeCtaUrl(plan.ctaUrl);
     cta.rel = 'noopener noreferrer';
     if (cta.href.startsWith('http') && !cta.href.includes(window.location.origin)) {
@@ -126,9 +114,7 @@
     const filtered = state.plans.filter((p) => normalizeCycle(p.billingCycle) === state.cycle);
 
     grid.textContent = '';
-    for (const plan of filtered) {
-      grid.appendChild(createPlanCard(plan));
-    }
+    filtered.forEach((plan) => grid.appendChild(createPlanCard(plan)));
 
     setVisibility(loading, false);
     setVisibility(error, false);
@@ -136,58 +122,51 @@
     setVisibility(grid, filtered.length > 0);
   }
 
-  async function ensureTemplate() {
-    const response = await fetch('/subscriptions.html', { credentials: 'same-origin' });
-    if (!response.ok) {
-      throw new Error('subscriptions template load failed');
-    }
-    const html = await response.text();
-    const template = document.createElement('template');
-    template.innerHTML = html;
-    mount.appendChild(template.content.cloneNode(true));
-  }
-
-  function waitForFirebaseReady(timeoutMs) {
+  // Load Firebase scripts dynamically on demand
+  function loadScript(src) {
     return new Promise((resolve, reject) => {
-      const started = Date.now();
-      const timer = setInterval(() => {
-        const firebaseReady =
-          window.firebase &&
-          typeof window.firebase.initializeApp === 'function' &&
-          typeof window.firebase.firestore === 'function';
-
-        if (firebaseReady) {
-          clearInterval(timer);
-          try {
-            if (!window.firebase.apps || window.firebase.apps.length === 0) {
-              window.firebase.initializeApp();
-            }
-          } catch (_) {
-            // If init is already handled by Firebase Hosting init.js this can throw.
-          }
-          resolve(window.firebase);
-          return;
-        }
-
-        if (Date.now() - started > timeoutMs) {
-          clearInterval(timer);
-          reject(new Error('firebase-not-ready'));
-        }
-      }, 120);
+      if (document.querySelector(`script[src="${src}"]`)) return resolve();
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload = resolve;
+      s.onerror = reject;
+      document.head.appendChild(s);
     });
   }
 
+  async function initFirebase() {
+    if (state.firebaseLoaded) return;
+    state.firebaseLoaded = true;
+
+    try {
+      await loadScript('https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js');
+      await loadScript('https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js');
+
+      if (!window.firebase.apps.length) {
+        window.firebase.initializeApp({
+          apiKey: "AIzaSyBDHpJHhF_Q1wP_uJf5MhV4cBxJ3xP4L8c",
+          authDomain: "pocketpos-firebase.firebaseapp.com",
+          projectId: "pocketpos-firebase",
+          storageBucket: "pocketpos-firebase.appspot.com",
+          messagingSenderId: "123456789012",
+          appId: "1:123456789012:web:abcdef1234567890"
+        });
+      }
+
+      subscribePlans(window.firebase);
+    } catch (_) {
+      showError();
+    }
+  }
+
+  function showError() {
+    setVisibility(document.getElementById('subs-loading'), false);
+    setVisibility(document.getElementById('subs-empty'), false);
+    setVisibility(document.getElementById('subs-grid'), false);
+    setVisibility(document.getElementById('subs-error'), true);
+  }
+
   function subscribePlans(firebase) {
-    const loading = document.getElementById('subs-loading');
-    const empty = document.getElementById('subs-empty');
-    const error = document.getElementById('subs-error');
-    const grid = document.getElementById('subs-grid');
-
-    setVisibility(loading, true);
-    setVisibility(empty, false);
-    setVisibility(error, false);
-    setVisibility(grid, false);
-
     firebase
       .firestore()
       .collection('platform_subscription_plans')
@@ -197,54 +176,40 @@
       .orderBy('sortOrder', 'asc')
       .onSnapshot(
         (snapshot) => {
-          state.plans = snapshot.docs.map((doc) => {
-            const data = doc.data() || {};
-            data.id = doc.id;
-            return data;
-          });
+          state.plans = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
           render();
         },
-        () => {
-          setVisibility(loading, false);
-          setVisibility(empty, false);
-          setVisibility(grid, false);
-          setVisibility(error, true);
-        }
+        () => showError()
       );
   }
 
   function attachEvents() {
     const monthlyBtn = document.getElementById('subs-cycle-monthly');
     const yearlyBtn = document.getElementById('subs-cycle-yearly');
-    if (monthlyBtn) {
-      monthlyBtn.addEventListener('click', () => {
-        state.cycle = 'monthly';
-        render();
-      });
-    }
-    if (yearlyBtn) {
-      yearlyBtn.addEventListener('click', () => {
-        state.cycle = 'yearly';
-        render();
-      });
+    if (monthlyBtn) monthlyBtn.addEventListener('click', () => { state.cycle = 'monthly'; render(); });
+    if (yearlyBtn) yearlyBtn.addEventListener('click', () => { state.cycle = 'yearly'; render(); });
+  }
+
+  // Use IntersectionObserver to lazy load Firebase only when section comes into view
+  function setupLazyObserver() {
+    const section = document.getElementById('pricing');
+    if (!section) return initFirebase();
+
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting) {
+          initFirebase();
+          observer.disconnect();
+        }
+      }, { rootMargin: '200px' });
+      observer.observe(section);
+    } else {
+      initFirebase();
     }
   }
 
-  (async function init() {
-    try {
-      await ensureTemplate();
-      attachEvents();
-      const firebase = await waitForFirebaseReady(9000);
-      subscribePlans(firebase);
-    } catch (_) {
-      const loading = document.getElementById('subs-loading');
-      const error = document.getElementById('subs-error');
-      const empty = document.getElementById('subs-empty');
-      const grid = document.getElementById('subs-grid');
-      setVisibility(loading, false);
-      setVisibility(empty, false);
-      setVisibility(grid, false);
-      setVisibility(error, true);
-    }
-  })();
+  document.addEventListener('DOMContentLoaded', () => {
+    attachEvents();
+    setupLazyObserver();
+  });
 })();

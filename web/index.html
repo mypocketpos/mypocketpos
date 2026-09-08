@@ -903,8 +903,7 @@
        #flutter-app-iframe into #flutter-modal-content on trigger, so no
        third-party frame loads until the visitor asks for it. Kept as a sibling
        of #landing so enterApp() hiding the landing page can't hide the modal. -->
-  <div id="flutter-modal-container" role="dialog" aria-modal="true" aria-hidden="true"
-    aria-label="Register your store">
+  <div id="flutter-modal-container" role="dialog" aria-modal="true" aria-hidden="true" aria-label="Register your store">
     <div id="flutter-modal-content">
       <button id="close-flutter-modal" type="button" aria-label="Close registration">&times;</button>
     </div>
@@ -1046,8 +1045,34 @@
         </div>
       </section>
 
+      <!-- Pricing Section (Inlined HTML for instant layout paint) -->
       <section id="pricing" style="background:#eef6f4">
-        <div id="subscriptions-mount"></div>
+        <div class="wrap">
+          <section id="subscriptions" class="subs-wrap" aria-labelledby="subs-heading">
+            <div class="subs-head">
+              <p class="subs-kicker">Pricing</p>
+              <h2 id="subs-heading">Choose a plan that fits your counter</h2>
+              <p class="subs-copy">
+                Transparent subscription plans from MyPocketPOS. Start with a trial and scale as your store grows.
+              </p>
+            </div>
+
+            <div class="subs-cycle" role="tablist" aria-label="Billing cycle">
+              <button type="button" id="subs-cycle-monthly" class="cycle-btn is-active"
+                aria-selected="true">Monthly</button>
+              <button type="button" id="subs-cycle-yearly" class="cycle-btn" aria-selected="false">Yearly</button>
+            </div>
+
+            <!-- Min-height reserved to prevent cumulative layout shift (CLS) -->
+            <div style="min-height: 380px;">
+              <div id="subs-loading" class="subs-state">Loading plans...</div>
+              <div id="subs-empty" class="subs-state" hidden>No active plans are available right now.</div>
+              <div id="subs-error" class="subs-state subs-state-error" hidden>Unable to load plans right now. Please try
+                again shortly.</div>
+              <div id="subs-grid" class="subs-grid" hidden></div>
+            </div>
+          </section>
+        </div>
       </section>
 
       <!-- How it works -->
@@ -1147,24 +1172,24 @@
   <!-- Boot the Flutter POS app in the background (async, non-blocking so the
        landing paints instantly and stays crawlable). The #landing overlay
        covers it until the user chooses to enter. -->
-    <script defer src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
-    <script defer src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
-    <script defer src="https://www.gstatic.com/firebasejs/10.13.2/firebase-analytics-compat.js"></script>
-    <script>
-      // Initialize Firebase (fallback config)
-      const firebaseConfig = {
-        apiKey: "AIzaSyBDHpJHhF_Q1wP_uJf5MhV4cBxJ3xP4L8c",
-        authDomain: "pocketpos-firebase.firebaseapp.com",
-        projectId: "pocketpos-firebase",
-        storageBucket: "pocketpos-firebase.appspot.com",
-        messagingSenderId: "123456789012",
-        appId: "1:123456789012:web:abcdef1234567890"
-      };
-      if (!firebase.apps.length) {
-        firebase.initializeApp(firebaseConfig);
-      }
-    </script>
-    <script src="subscriptions.js" defer></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.13.2/firebase-analytics-compat.js"></script>
+  <script>
+    // Initialize Firebase (fallback config)
+    const firebaseConfig = {
+      apiKey: "AIzaSyBDHpJHhF_Q1wP_uJf5MhV4cBxJ3xP4L8c",
+      authDomain: "pocketpos-firebase.firebaseapp.com",
+      projectId: "pocketpos-firebase",
+      storageBucket: "pocketpos-firebase.appspot.com",
+      messagingSenderId: "123456789012",
+      appId: "1:123456789012:web:abcdef1234567890"
+    };
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+  </script>
+  <script src="subscriptions.js" defer></script>
   <script src="sqljs/sql-asm.js" defer></script>
   <script src="flutter_bootstrap.js" async></script>
   <script>
