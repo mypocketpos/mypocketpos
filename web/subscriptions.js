@@ -71,33 +71,33 @@
       const isPopular = plan.isPopular || plan.popular;
 
       const card = document.createElement('div');
-      card.className = `subs-card ${isPopular ? 'subs-card-popular' : ''}`;
+      card.className = `sub-card ${isPopular ? 'popular' : ''}`;
 
       let featuresHTML = '';
       if (Array.isArray(plan.features)) {
         featuresHTML = plan.features
-          .map(f => `<li><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg><span>${f}</span></li>`)
+          .map(f => `<li><svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg><span>${f}</span></li>`)
           .join('');
       }
 
       card.innerHTML = `
-        ${isPopular ? '<span class="subs-badge">Most Popular</span>' : ''}
-        <h3 class="subs-title">${plan.name || 'Standard Plan'}</h3>
-        <p class="subs-desc">${plan.description || ''}</p>
-        
-        <div class="subs-price-box">
-          ${originalPrice && originalPrice > price ? `<span class="subs-original-price">${formatCurrency(originalPrice)}</span>` : ''}
-          <div class="subs-price-row">
-            <span class="subs-price">${formatCurrency(price)}</span>
-            <span class="subs-period">/${isYearly ? 'year' : 'month'}</span>
+        ${isPopular ? '<span class="sub-badge">Most Popular</span>' : ''}
+        <h3 class="sub-title">${plan.name || 'Standard Plan'}</h3>
+        <p class="sub-desc">${plan.description || ''}</p>
+
+        <div class="sub-price-box">
+          ${originalPrice && originalPrice > price ? `<span class="sub-original-price">${formatCurrency(originalPrice)}</span>` : ''}
+          <div class="sub-price-row">
+            <span class="sub-price">${formatCurrency(price)}</span>
+            <span class="sub-period">/${isYearly ? 'year' : 'month'}</span>
           </div>
         </div>
 
-        <button class="btn btn-primary subs-cta" data-cta="register" onclick="enterApp()">
+        <button class="btn btn-primary sub-cta" data-cta="register" onclick="enterApp()">
           ${plan.ctaText || 'Get Started'}
         </button>
 
-        <ul class="subs-features">
+        <ul class="sub-features">
           ${featuresHTML}
         </ul>
       `;
