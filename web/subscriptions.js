@@ -178,7 +178,7 @@ function handlePlanCTA(button) {
   };
   
   // Call enterApp with the plan data
-  enterApp(planData);
+  enterApp();
   
   // For Google Tag Manager tracking
   if (window.dataLayer) {
