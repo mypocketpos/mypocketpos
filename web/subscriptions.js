@@ -64,7 +64,7 @@
 
     elGrid.innerHTML = '';
 
-    rawPlans.forEach(plan => {
+    rawPlans.forEach((plan, index) => {
       const isYearly = currentCycle === 'yearly';
       const price = isYearly ? plan.yearlyPrice : plan.monthlyPrice;
       const originalPrice = isYearly ? plan.yearlyOriginalPrice : plan.monthlyOriginalPrice;
@@ -80,9 +80,16 @@
           .join('');
       }
 
+      // Build dynamic data attributes for the plan
+      const planId = plan.id || `plan-${index}`;
+      const planName = plan.name || 'Standard Plan';
+      const planPrice = price || 0;
+      const planCycle = isYearly ? 'yearly' : 'monthly';
+      const planCtaText = plan.ctaText || 'Get Started';
+
       card.innerHTML = `
         ${isPopular ? '<span class="sub-badge">Most Popular</span>' : ''}
-        <h3 class="sub-title">${plan.name || 'Standard Plan'}</h3>
+        <h3 class="sub-title">${planName}</h3>
         <p class="sub-desc">${plan.description || ''}</p>
 
         <div class="sub-price-box">
@@ -93,8 +100,14 @@
           </div>
         </div>
 
-        <button class="btn btn-primary sub-cta" data-cta="register" onclick="enterApp()">
-          ${plan.ctaText || 'Get Started'}
+        <button class="btn btn-primary sub-cta" 
+                data-cta="register" 
+                data-plan-id="${planId}"
+                data-plan-name="${planName}"
+                data-plan-price="${planPrice}"
+                data-plan-cycle="${planCycle}"
+                onclick="handlePlanCTA(this)">
+          ${planCtaText}
         </button>
 
         <ul class="sub-features">
@@ -137,3 +150,44 @@
     fetchPlans();
   });
 })();
+
+// Global function to handle plan CTA clicks with dynamic data
+function handlePlanCTA(button) {
+  // Get plan data from button attributes
+  const planId = button.getAttribute('data-plan-id');
+  const planName = button.getAttribute('data-plan-name');
+  const planPrice = button.getAttribute('data-plan-price');
+  const planCycle = button.getAttribute('data-plan-cycle');
+  
+  // You can now use this data for tracking or passing to enterApp
+  console.log('Plan selected:', {
+    id: planId,
+    name: planName,
+    price: planPrice,
+    cycle: planCycle
+  });
+
+  // Call enterApp with plan data
+  // Option 1: Pass as JSON string
+  const planData = {
+    id: planId,
+    name: planName,
+    price: parseFloat(planPrice),
+    cycle: planCycle,
+    action: 'register'
+  };
+  
+  // Call enterApp with the plan data
+  enterApp(planData);
+  
+  // For Google Tag Manager tracking
+  if (window.dataLayer) {
+    window.dataLayer.push({
+      'event': 'plan_selected',
+      'plan_id': planId,
+      'plan_name': planName,
+      'plan_price': planPrice,
+      'plan_cycle': planCycle
+    });
+  }
+}
