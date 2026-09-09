@@ -13,6 +13,7 @@ import '../../../core/models/printer_config.dart';
 import '../../../core/models/storefront_shopping_config.dart';
 import '../../mill_run/domain/milling_config.dart';
 import '../../store/presentation/store_auth_controller.dart';
+import '../../subscription/presentation/store_subscription_status.dart';
 import '../../warehouse/domain/inventory_mode.dart';
 
 class SettingsPage extends ConsumerWidget {
@@ -21,12 +22,16 @@ class SettingsPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isRiceMill = ref.watch(isRiceMillProvider);
+    final storeId = ref.watch(activeStoreIdProvider) ?? '';
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // Subscription Status — Show at top for visibility
+          StoreSubscriptionStatus(storeId: storeId),
+          const SizedBox(height: 16),
           _InvoiceBrandingCard(),
           const SizedBox(height: 16),
           _DiscountPolicyCard(),
