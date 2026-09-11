@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/di/providers.dart';
+import '../../../core/firestore/store_scope.dart';
+import '../../store/presentation/store_auth_controller.dart';
 import '../../barcode/presentation/barcode_scanner_page.dart';
 import '../../barcode/presentation/hid_scanner_listener.dart';
 import '../../warehouse/domain/inventory_mode.dart';
@@ -219,6 +221,23 @@ class _ProductPageState extends ConsumerState<ProductPage> {
     clearZeroOnFocus(selling, sellingFocus);
     final formKey = GlobalKey<FormState>();
     int? selectedCategoryId = product?.categoryId;
+    final emoji = TextEditingController();
+    bool showInQuickCheckout = false;
+
+    if (isEdit) {
+      final storeId = ref.read(activeStoreIdProvider);
+      if (storeId != null && storeId.isNotEmpty) {
+        final snap = await storeCollection(
+          ref.read(firestoreProvider),
+          storeId,
+          'products',
+        ).doc('${product.id}').get();
+        final data = snap.data() ?? const <String, dynamic>{};
+        showInQuickCheckout = data['showInQuickCheckout'] == true;
+        emoji.text = (data['quickCheckoutEmoji'] as String?)?.trim() ?? '';
+      }
+    }
+
     final messenger = ScaffoldMessenger.of(context);
 
     // Opening stock is only meaningful for a brand-new product in a
@@ -383,6 +402,29 @@ class _ProductPageState extends ConsumerState<ProductPage> {
                         const SizedBox(width: 8),
                         Expanded(child: _field(unit, 'Unit (piece/kg/ltr...)')),
                       ]),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: emoji,
+                        maxLength: 2,
+                        decoration: const InputDecoration(
+                          labelText: 'Quick Checkout Emoji/Icon',
+                          helperText:
+                              'Example: ☕, 🍪, 🥤 (optional, shown on big cards)',
+                          isDense: true,
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      SwitchListTile.adaptive(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Show in Quick Checkout'),
+                        subtitle: const Text(
+                          'Show this product in the quick card grid for one-tap billing.',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                        value: showInQuickCheckout,
+                        onChanged: (v) =>
+                            setLocal(() => showInQuickCheckout = v),
+                      ),
                       if (showOpeningStock) ...[
                         const SizedBox(height: 8),
                         _field(opening, 'Opening stock', numeric: true),
@@ -416,6 +458,10 @@ class _ProductPageState extends ConsumerState<ProductPage> {
                         purchasePrice: double.tryParse(purchase.text) ?? 0,
                         taxPercent: double.tryParse(tax.text) ?? 0,
                         unit: unitVal,
+                        showInQuickCheckout: showInQuickCheckout,
+                        quickCheckoutEmoji: emoji.text.trim().isEmpty
+                            ? null
+                            : emoji.text.trim(),
                       );
                     } else {
                       await repo.add(
@@ -430,6 +476,10 @@ class _ProductPageState extends ConsumerState<ProductPage> {
                         openingStock: showOpeningStock
                             ? (double.tryParse(opening.text) ?? 0)
                             : 0,
+                        showInQuickCheckout: showInQuickCheckout,
+                        quickCheckoutEmoji: emoji.text.trim().isEmpty
+                            ? null
+                            : emoji.text.trim(),
                       );
                     }
                     if (ctx.mounted) Navigator.pop(ctx);
@@ -449,6 +499,7 @@ class _ProductPageState extends ConsumerState<ProductPage> {
 
     purchaseFocus.dispose();
     sellingFocus.dispose();
+    emoji.dispose();
   }
 
   /// A short, human-friendly product code, e.g. `PRD-4F2A9C`.

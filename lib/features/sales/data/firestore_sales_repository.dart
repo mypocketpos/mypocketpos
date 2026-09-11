@@ -680,6 +680,52 @@ class FirestoreSalesRepository implements SalesRepository {
     return saleId;
   }
 
+  @override
+  Future<Sale?> findByInvoiceNo(String invoiceNo) async {
+    final trimmed = invoiceNo.trim();
+    if (trimmed.isEmpty) return null;
+    final snap = await _sales.where('invoiceNo', isEqualTo: trimmed).limit(1).get();
+    if (snap.docs.isEmpty) return null;
+    return saleFromDoc(snap.docs.first);
+  }
+
+  @override
+  Future<List<Sale>> findSalesByCustomerMobile(String mobile, {int limit = 10}) async {
+    final trimmed = mobile.trim();
+    if (trimmed.isEmpty) return [];
+
+    // First, find the customer by mobile
+    final customerSnap = await _customers
+        .where('mobile', isEqualTo: trimmed)
+        .limit(1)
+        .get();
+
+    if (customerSnap.docs.isEmpty) return [];
+
+    final customerId = int.tryParse(customerSnap.docs.first.id);
+    if (customerId == null) return [];
+
+    // Then, find all sales for that customer
+    final salesSnap = await _sales
+        .where('customerId', isEqualTo: customerId)
+        .orderBy('soldAt', descending: true)
+        .limit(limit)
+        .get();
+
+    return salesSnap.docs.map(saleFromDoc).toList();
+  }
+
+  @override
+  Future<List<Sale>> getRecentSales(int? customerId, {int limit = 10}) async {
+    final query = _sales.orderBy('soldAt', descending: true).limit(limit);
+
+    final snap = customerId != null
+        ? await query.where('customerId', isEqualTo: customerId).get()
+        : await query.get();
+
+    return snap.docs.map(saleFromDoc).toList();
+  }
+
   // ── helpers ────────────────────────────────────────────────────────────────
 
   Future<({bool track, int warehouseId})> _stockContext(

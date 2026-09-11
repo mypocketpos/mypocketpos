@@ -574,6 +574,43 @@ class SalesRepositoryImpl implements SalesRepository {
     });
   }
 
+  @override
+  Future<Sale?> findByInvoiceNo(String invoiceNo) async {
+    final trimmed = invoiceNo.trim();
+    if (trimmed.isEmpty) return null;
+    return (_db.select(_db.sales)..where((s) => s.invoiceNo.equals(trimmed)))
+        .getSingleOrNull();
+  }
+
+  @override
+  Future<List<Sale>> findSalesByCustomerMobile(String mobile, {int limit = 10}) async {
+    final trimmed = mobile.trim();
+    if (trimmed.isEmpty) return [];
+
+    final query = _db.select(_db.sales).join([
+      innerJoin(_db.customers, _db.customers.id.equalsExp(_db.sales.customerId)),
+    ])
+      ..where(_db.customers.mobile.equals(trimmed))
+      ..orderBy([OrderingTerm.desc(_db.sales.soldAt)])
+      ..limit(limit);
+
+    final results = await query.get();
+    return results.map((row) => row.readTable(_db.sales)).toList();
+  }
+
+  @override
+  Future<List<Sale>> getRecentSales(int? customerId, {int limit = 10}) async {
+    final query = _db.select(_db.sales)
+      ..orderBy([(s) => OrderingTerm.desc(s.soldAt)])
+      ..limit(limit);
+
+    if (customerId != null) {
+      query.where((s) => s.customerId.equals(customerId));
+    }
+
+    return query.get();
+  }
+
   Future<void> _assertStockAvailable({
     required int productId,
     required double requestedQty,

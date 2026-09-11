@@ -20,10 +20,7 @@ class FirestoreProductRepository implements ProductRepository {
 
   @override
   Stream<List<Product>> watchAll() {
-    return _col
-        .where('isActive', isEqualTo: true)
-        .snapshots()
-        .map((snap) {
+    return _col.where('isActive', isEqualTo: true).snapshots().map((snap) {
       final list = snap.docs.map(_fromDoc).toList();
       list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
       return list;
@@ -84,6 +81,8 @@ class FirestoreProductRepository implements ProductRepository {
     required double taxPercent,
     String unit = 'piece',
     double openingStock = 0,
+    bool showInQuickCheckout = false,
+    String? quickCheckoutEmoji,
   }) async {
     final id = newIntId();
 
@@ -116,6 +115,8 @@ class FirestoreProductRepository implements ProductRepository {
           purchasePrice: purchasePrice,
           taxPercent: taxPercent,
           unit: unit,
+          showInQuickCheckout: showInQuickCheckout,
+          quickCheckoutEmoji: quickCheckoutEmoji,
         )..['createdAt'] = FieldValue.serverTimestamp());
 
     // An opening inventory row per warehouse so the product shows up in the
@@ -123,9 +124,8 @@ class FirestoreProductRepository implements ProductRepository {
     // opening quantity goes to the default warehouse; the rest start at 0.
     final inventory = storeCollection(_db, _storeId, 'inventory');
     for (final wid in warehouseIds) {
-      final qty = (wid == defaultWarehouseId && openingStock > 0)
-          ? openingStock
-          : 0.0;
+      final qty =
+          (wid == defaultWarehouseId && openingStock > 0) ? openingStock : 0.0;
       final invId = newIntId();
       batch.set(inventory.doc('$invId'), {
         'productId': id,
@@ -160,7 +160,8 @@ class FirestoreProductRepository implements ProductRepository {
     final invSnap = await inventory.get();
     // Product ids that already have at least one inventory row.
     final covered = <int>{
-      for (final d in invSnap.docs) (d.data()['productId'] as num?)?.toInt() ?? -1
+      for (final d in invSnap.docs)
+        (d.data()['productId'] as num?)?.toInt() ?? -1
     };
 
     final prodSnap = await _col.where('isActive', isEqualTo: true).get();
@@ -206,6 +207,8 @@ class FirestoreProductRepository implements ProductRepository {
     required double purchasePrice,
     required double taxPercent,
     String unit = 'piece',
+    bool showInQuickCheckout = false,
+    String? quickCheckoutEmoji,
   }) {
     return _col.doc('$id').set(
         _data(
@@ -217,6 +220,8 @@ class FirestoreProductRepository implements ProductRepository {
           purchasePrice: purchasePrice,
           taxPercent: taxPercent,
           unit: unit,
+          showInQuickCheckout: showInQuickCheckout,
+          quickCheckoutEmoji: quickCheckoutEmoji,
         ),
         SetOptions(merge: true));
   }
@@ -239,7 +244,10 @@ class FirestoreProductRepository implements ProductRepository {
     required double purchasePrice,
     required double taxPercent,
     required String unit,
+    required bool showInQuickCheckout,
+    String? quickCheckoutEmoji,
   }) {
+    final emoji = quickCheckoutEmoji?.trim();
     return {
       'name': name,
       'productCode': productCode,
@@ -250,6 +258,8 @@ class FirestoreProductRepository implements ProductRepository {
       'mrp': 0.0,
       'taxPercent': taxPercent,
       'unit': unit,
+      'showInQuickCheckout': showInQuickCheckout,
+      'quickCheckoutEmoji': (emoji == null || emoji.isEmpty) ? null : emoji,
       'isActive': true,
     };
   }

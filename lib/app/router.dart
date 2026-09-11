@@ -17,6 +17,7 @@ import '../features/products/presentation/product_page.dart';
 import '../features/purchases/presentation/purchase_page.dart';
 import '../features/ledger/presentation/credit_ledger_page.dart';
 import '../features/reports/presentation/sales_report_page.dart';
+import '../features/sales/presentation/quick_checkout_page.dart';
 import '../features/sales/presentation/pos_billing_page.dart';
 import '../features/expense/presentation/expense_page.dart';
 import '../features/staff/presentation/staff_page.dart';
@@ -118,6 +119,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               path: '/billing',
               builder: (context, state) => const PosBillingPage()),
           GoRoute(
+              path: '/quick-checkout',
+              builder: (context, state) => const QuickCheckoutPage()),
+          GoRoute(
+              path: '/quick-checkout',
+              builder: (context, state) => const QuickCheckoutPage()),
+          GoRoute(
               path: '/customers',
               builder: (context, state) => const CustomerListPage()),
           GoRoute(
@@ -208,6 +215,7 @@ class _AppShell extends ConsumerWidget {
     final mode =
         ref.watch(inventoryModeProvider).valueOrNull ?? InventoryMode.single;
     final isRiceMill = ref.watch(isRiceMillProvider);
+    final quickCheckoutEnabled = ref.watch(quickCheckoutEnabledProvider);
 
     // Keep the warehouse + inventory caches warm for the whole authenticated
     // session. Firestore's one-time .get() throws ("client is offline") for a
@@ -249,6 +257,12 @@ class _AppShell extends ConsumerWidget {
         label: isRiceMill ? 'Rice Sales' : 'POS',
         icon: Icons.point_of_sale_rounded
       ),
+      if (quickCheckoutEnabled)
+        (
+          route: '/quick-checkout',
+          label: 'Quick Checkout',
+          icon: Icons.flash_on_rounded
+        ),
       (
         route: '/customers',
         label: isRiceMill ? 'Rice Parties' : 'Customers',
