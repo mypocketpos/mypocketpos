@@ -493,55 +493,149 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
     }
 
     final summary = ref.read(cartSummaryProvider(rows));
+    final now = DateTime.now();
 
     if (!mounted) return;
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Cart Items Print Preview'),
+        title: const Text('Bill Preview'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Divider(),
-              const Text('QUICK CHECKOUT', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              Text('Date: ${DateTime.now().toString().split('.')[0]}',
+              // Bill Header
+              Center(
+                child: Column(
+                  children: [
+                    const Text('Bill of Supply',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    const SizedBox(height: 4),
+                    const Text('Cash',
+                      style: TextStyle(fontSize: 11)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Date and Invoice
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Date: ${now.day}/${now.month}/${now.year}',
+                    style: const TextStyle(fontSize: 10)),
+                  Text('Invoice no: ${now.millisecondsSinceEpoch % 1000}',
+                    style: const TextStyle(fontSize: 10)),
+                ],
+              ),
+              Text('Time: ${now.hour}:${now.minute.toString().padLeft(2, '0')}',
                 style: const TextStyle(fontSize: 10, color: Colors.grey)),
-              const Divider(),
+
+              const SizedBox(height: 12),
+              const Divider(height: 1),
+
+              // Table Header
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: Text('Item Name',
+                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
+                    ),
+                    Expanded(
+                      child: Text('Qty',
+                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+                        textAlign: TextAlign.center),
+                    ),
+                    Expanded(
+                      child: Text('Price',
+                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+                        textAlign: TextAlign.right),
+                    ),
+                    Expanded(
+                      child: Text('Amount',
+                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+                        textAlign: TextAlign.right),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+
+              // Items
               ...rows.map((row) {
                 final lineTotal = row.product.sellingPrice * row.item.quantity;
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(row.product.name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                            Text('₹${row.product.sellingPrice.toStringAsFixed(2)} x ${row.item.quantity.toStringAsFixed(row.item.quantity % 1 == 0 ? 0 : 1)}',
-                              style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                          ],
-                        ),
+                        flex: 2,
+                        child: Text(row.product.name,
+                          style: const TextStyle(fontSize: 9),
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
                       ),
-                      Text('₹${lineTotal.toStringAsFixed(2)}',
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                      Expanded(
+                        child: Text(
+                          row.item.quantity.toStringAsFixed(
+                            row.item.quantity % 1 == 0 ? 0 : 1),
+                          style: const TextStyle(fontSize: 9),
+                          textAlign: TextAlign.center),
+                      ),
+                      Expanded(
+                        child: Text('₹${row.product.sellingPrice.toStringAsFixed(2)}',
+                          style: const TextStyle(fontSize: 9),
+                          textAlign: TextAlign.right),
+                      ),
+                      Expanded(
+                        child: Text('₹${lineTotal.toStringAsFixed(2)}',
+                          style: const TextStyle(fontSize: 9),
+                          textAlign: TextAlign.right),
+                      ),
                     ],
                   ),
                 );
               }),
-              const Divider(),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('TOTAL:', style: TextStyle(fontWeight: FontWeight.bold)),
-                  Text('₹${summary.grandTotal.toStringAsFixed(2)}',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.green)),
-                ],
+
+              const Divider(height: 1),
+
+              // Totals
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Subtotal',
+                          style: TextStyle(fontSize: 10)),
+                        Text('₹${(summary.grandTotal - summary.taxTotal).toStringAsFixed(2)}',
+                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Total',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        Text('₹${summary.grandTotal.toStringAsFixed(2)}',
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-              const Divider(),
+
+              const SizedBox(height: 12),
+              Center(
+                child: Text('Thank you for doing business with us',
+                  style: const TextStyle(fontSize: 9, color: Colors.grey),
+                  textAlign: TextAlign.center),
+              ),
             ],
           ),
         ),
@@ -1007,19 +1101,84 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
 
     if (result == null || !mounted) return;
 
-    // If credit/udhar selected, redirect to ledger module instead of processing checkout
+    // If credit/udhar selected, ask how much to pay now vs credit
     if (result.paymentMode == 'credit') {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Redirecting to Udhar module...'),
-            duration: Duration(seconds: 1),
+      final paidNowCtrl = TextEditingController();
+
+      if (!mounted) return;
+      final udharResult = await showDialog<({double paidNow, double creditAmount})?>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Udhar (Credit Sale)'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Total Amount: ₹${summary.grandTotal.toStringAsFixed(2)}',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: paidNowCtrl,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Amount to Pay Now (₹)',
+                  border: const OutlineInputBorder(),
+                  hintText: '0',
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Credit Amount: ₹${(summary.grandTotal - (double.tryParse(paidNowCtrl.text) ?? 0)).toStringAsFixed(2)}',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final paidNow = double.tryParse(paidNowCtrl.text) ?? 0;
+                final creditAmount = summary.grandTotal - paidNow;
+                Navigator.pop(ctx, (paidNow: paidNow, creditAmount: creditAmount));
+              },
+              child: const Text('Confirm Udhar'),
+            ),
+          ],
+        ),
+      );
+
+      if (udharResult == null || !mounted) return;
+
+      try {
+        await ref.read(salesRepositoryProvider).checkout(
+          cartId: cartId,
+          paymentMode: 'credit',
+          paidAmount: udharResult.paidNow,
         );
-      }
-      // Navigate to ledger (Udhar) module
-      if (mounted) {
-        context.go('/ledger');
+        ref.invalidate(dashboardMetricsProvider);
+        ref.invalidate(salesReportProvider);
+        ref.read(selectedCartIdProvider.notifier).state = null;
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: Colors.green.shade700,
+              content: Text(
+                'Udhar created: ₹${udharResult.creditAmount.toStringAsFixed(2)} to be paid later',
+              ),
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Udhar failed: $e')),
+          );
+        }
       }
       return;
     }
@@ -1245,17 +1404,22 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
                   }
                 }
 
-                // Get stock for this product
-                return FutureBuilder<double>(
-                  future: ref
-                      .read(inventoryRepositoryProvider)
-                      .availableStock(
-                        productId: row.product.id,
-                        warehouseId: 0, // Default warehouse
-                      )
-                      .catchError((_) => 0.0),
-                  builder: (context, snapshot) {
-                    final stock = snapshot.data ?? 0.0;
+                // Watch stock in real-time from inventory provider
+                return Consumer(
+                  builder: (context, localRef, _) {
+                    final inventoryAsync = localRef.watch(inventoryProvider);
+                    double stock = 0.0;
+
+                    if (inventoryAsync.hasValue) {
+                      final inventoryList = inventoryAsync.asData?.value ?? [];
+                      // Find stock for this product in real-time
+                      for (final item in inventoryList) {
+                        if (item.product.id == row.product.id) {
+                          stock += item.inventory.availableStock;
+                        }
+                      }
+                    }
+
                     return _QuickCard(
                       item: row,
                       busy: busy,
