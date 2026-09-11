@@ -41,6 +41,7 @@ import '../firestore/store_scope.dart';
 import '../models/discount_policy.dart';
 import '../models/invoice_branding.dart';
 import '../models/printer_config.dart';
+import '../models/quick_checkout_config.dart';
 import '../models/storefront_shopping_config.dart';
 import '../services/printer_service.dart';
 
@@ -582,4 +583,20 @@ final storeStorefrontShoppingConfigProvider =
       .doc('storefront')
       .snapshots()
       .map((snap) => StorefrontShoppingConfig.fromFirestoreMap(snap.data()));
+});
+
+/// Store-level Quick Checkout setting in `stores/{storeId}/settings/shop_settings`.
+final quickCheckoutConfigProvider = StreamProvider<QuickCheckoutConfig>((ref) {
+  final storeId = ref.watch(activeStoreIdProvider);
+  if (storeId == null) {
+    return Stream.value(const QuickCheckoutConfig.defaults());
+  }
+  return storeCollection(ref.watch(firestoreProvider), storeId, 'settings')
+      .doc('shop_settings')
+      .snapshots()
+      .map((snap) => QuickCheckoutConfig.fromFirestoreMap(snap.data()));
+});
+
+final quickCheckoutEnabledProvider = Provider<bool>((ref) {
+  return ref.watch(quickCheckoutConfigProvider).valueOrNull?.enabled ?? false;
 });

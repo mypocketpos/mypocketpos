@@ -39,6 +39,17 @@ class _StoreLoginPageState extends ConsumerState<StoreLoginPage> {
     // On success the router redirect moves to the app / pending screen.
   }
 
+  Future<void> _signInWithGoogle() async {
+    final ok =
+        await ref.read(storeAuthControllerProvider.notifier).loginWithGoogle();
+    if (!ok && mounted) {
+      final err = ref.read(storeAuthControllerProvider).error;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(err ?? 'Google sign-in failed')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final busy = ref.watch(storeAuthControllerProvider).busy;
@@ -152,6 +163,15 @@ class _StoreLoginPageState extends ConsumerState<StoreLoginPage> {
                       onPressed:
                           busy ? null : () => context.push('/admin-login'),
                       child: const Text('Platform admin login'),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: busy ? null : _signInWithGoogle,
+                        icon: const Icon(Icons.g_mobiledata, size: 24),
+                        label: const Text('Continue with Gmail'),
+                      ),
                     ),
                     if (allowPublicStorefront)
                       TextButton(

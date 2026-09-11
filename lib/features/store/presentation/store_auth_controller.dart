@@ -52,9 +52,27 @@ class StoreAuthController extends StateNotifier<StoreAuthState> {
         password: password,
       );
       state = StoreAuthState(
-        stage: session.isApproved
-            ? StoreAuthStage.active
-            : StoreAuthStage.pending,
+        stage:
+            session.isApproved ? StoreAuthStage.active : StoreAuthStage.pending,
+        session: session,
+      );
+      return true;
+    } on FirebaseAuthException catch (e) {
+      state = state.copyWith(busy: false, error: _message(e));
+      return false;
+    } catch (e) {
+      state = state.copyWith(busy: false, error: _clean(e));
+      return false;
+    }
+  }
+
+  Future<bool> loginWithGoogle() async {
+    state = state.copyWith(busy: true, error: null);
+    try {
+      final session = await _service.loginWithGoogle();
+      state = StoreAuthState(
+        stage:
+            session.isApproved ? StoreAuthStage.active : StoreAuthStage.pending,
         session: session,
       );
       return true;

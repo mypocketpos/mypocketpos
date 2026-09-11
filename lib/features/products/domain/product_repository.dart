@@ -21,6 +21,8 @@ abstract class ProductRepository {
     required double taxPercent,
     String unit,
     double openingStock,
+    bool showInQuickCheckout,
+    String? quickCheckoutEmoji,
   });
 
   /// Creates an opening inventory row (0 stock) for every active product that
@@ -37,6 +39,8 @@ abstract class ProductRepository {
     required double purchasePrice,
     required double taxPercent,
     String unit,
+    bool showInQuickCheckout,
+    String? quickCheckoutEmoji,
   });
   Future<void> updatePrice(int id, double sellingPrice);
   Future<void> delete(int id);

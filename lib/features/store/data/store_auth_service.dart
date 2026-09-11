@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 import 'package:pocket_pos/core/constants/app_constants.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -24,6 +25,7 @@ class StoreAuthService {
 
   final FirebaseAuth _auth;
   final FirebaseFirestore _db;
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
 
   static const _prefsStoreId = 'active_store_id';
   static const _prefsAdmin = 'is_platform_admin';
@@ -42,6 +44,15 @@ class StoreAuthService {
 
   String _emailFor(String storeId, String username) =>
       '${username.trim().toLowerCase()}@${storeId.trim().toLowerCase()}.pocketpos.app';
+
+  String _usernameFromGoogleUser(User user) {
+    final raw = (user.email?.split('@').first ?? user.displayName ?? 'owner')
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9_]'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_|_$'), '');
+    return raw.isEmpty ? 'owner' : raw;
+  }
 
   String _generateStoreId() {
     const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -148,7 +159,8 @@ class StoreAuthService {
         'businessType': businessType.name,
       }).catchError((error) {
         if (kDebugMode) {
-          print('⚠️ Registration email webhook failed (store still created): $error');
+          print(
+              '⚠️ Registration email webhook failed (store still created): $error');
         }
       }));
     } catch (e) {
@@ -171,7 +183,8 @@ class StoreAuthService {
     const endpoint = AppConstants.cartSessionEndpoint;
     if (endpoint.isEmpty) {
       if (kDebugMode) {
-        print('⚠️ Cart session endpoint not configured; skipping registration email');
+        print(
+            '⚠️ Cart session endpoint not configured; skipping registration email');
       }
       return;
     }
@@ -186,7 +199,8 @@ class StoreAuthService {
               'storeData': storeData,
             }),
           )
-          .timeout(_netTimeout, onTimeout: () => _timedOut('Registration email'));
+          .timeout(_netTimeout,
+              onTimeout: () => _timedOut('Registration email'));
 
       final json = jsonDecode(response.body) as Map<String, dynamic>;
       if (json['success'] == true) {
@@ -219,6 +233,115 @@ class StoreAuthService {
         .timeout(_netTimeout, onTimeout: () => _timedOut('Sign-in'));
     final session = await _sessionFor(id, cred.user!.uid, username.trim());
     await _persist(storeId: id, isAdmin: false);
+    return session;
+  }
+
+  /// Gmail login with Firebase Auth.
+  ///
+  /// If this is the first login for the account, it auto-creates an approved
+  /// store + user mapping so multi-tenant session restore can work.
+  Future<StoreSession> loginWithGoogle() async {
+    UserCredential cred;
+    if (kIsWeb) {
+      cred = await _auth
+          .signInWithPopup(GoogleAuthProvider())
+          .timeout(_netTimeout, onTimeout: () => _timedOut('Google sign-in'));
+    } else {
+      final googleUser = await _googleSignIn
+          .signIn()
+          .timeout(_netTimeout, onTimeout: () => _timedOut('Google sign-in'));
+      if (googleUser == null) {
+        throw Exception('Google sign-in was cancelled.');
+      }
+      final googleAuth = await googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+      cred = await _auth
+          .signInWithCredential(credential)
+          .timeout(_netTimeout, onTimeout: () => _timedOut('Google sign-in'));
+    }
+
+    final user = cred.user;
+    if (user == null) {
+      throw Exception('Google sign-in failed. Please try again.');
+    }
+
+    final email = (user.email ?? '').trim().toLowerCase();
+    if (email.isEmpty) {
+      await _auth.signOut();
+      throw Exception('Google account must include an email address.');
+    }
+
+    final userStoreRef = _db.collection('user_store_index').doc(user.uid);
+    final existingUserStore = await userStoreRef.get();
+    var storeId = existingUserStore.data()?['storeId'] as String?;
+
+    final emailRef = _db.collection('email_index').doc(email);
+    final emailSnap = await emailRef.get();
+    if (storeId == null && emailSnap.exists) {
+      final linkedUid = emailSnap.data()?['uid'] as String?;
+      final linkedStoreId = emailSnap.data()?['storeId'] as String?;
+      if (linkedUid != null && linkedUid != user.uid) {
+        await _auth.signOut();
+        throw Exception(
+            'This Gmail account is already linked to another store owner.');
+      }
+      storeId = linkedStoreId;
+    }
+
+    if (storeId == null) {
+      storeId = _generateStoreId();
+      final ownerName = (user.displayName ?? 'Store Owner').trim();
+      final username = _usernameFromGoogleUser(user);
+
+      try {
+        await _db.runTransaction((tx) async {
+          final snap = await tx.get(emailRef);
+          if (snap.exists) throw const _EmailTakenException();
+          tx.set(emailRef, {
+            'storeId': storeId,
+            'uid': user.uid,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+          tx.set(_storeDoc(storeId!), {
+            'storeId': storeId,
+            'name': ownerName,
+            'ownerName': ownerName,
+            'ownerUid': user.uid,
+            'ownerUsername': username,
+            'mobile': user.phoneNumber,
+            'email': email,
+            'businessType': DemoBusinessType.grocery.name,
+            'status': 'approved',
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+          tx.set(_storeDoc(storeId).collection('users').doc(user.uid), {
+            'username': username,
+            'role': 'owner',
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+          tx.set(userStoreRef, {'storeId': storeId});
+        }).timeout(_netTimeout, onTimeout: () => _timedOut('Creating store'));
+      } on _EmailTakenException {
+        throw Exception(
+            'This Gmail account is already registered. Try logging in again.');
+      }
+
+      await StoreCatalogSeeder(_db).load(DemoBusinessType.grocery, storeId);
+    } else {
+      await userStoreRef.set({'storeId': storeId}, SetOptions(merge: true));
+      await _storeDoc(storeId).collection('users').doc(user.uid).set({
+        'username': _usernameFromGoogleUser(user),
+        'role': 'owner',
+        'createdAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    }
+
+    final session =
+        await _sessionFor(storeId, user.uid, _usernameFromGoogleUser(user));
+    await _persist(storeId: storeId, isAdmin: false);
     return session;
   }
 
@@ -350,6 +473,9 @@ class StoreAuthService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_prefsStoreId);
     await prefs.remove(_prefsAdmin);
+    try {
+      await _googleSignIn.signOut();
+    } catch (_) {}
     await _auth.signOut();
   }
 

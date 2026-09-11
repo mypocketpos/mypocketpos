@@ -10,6 +10,7 @@ import '../../../core/firestore/store_scope.dart';
 import '../../../core/models/discount_policy.dart';
 import '../../../core/models/invoice_branding.dart';
 import '../../../core/models/printer_config.dart';
+import '../../../core/models/quick_checkout_config.dart';
 import '../../../core/models/storefront_shopping_config.dart';
 import '../../mill_run/domain/milling_config.dart';
 import '../../store/presentation/store_auth_controller.dart';
@@ -36,6 +37,8 @@ class SettingsPage extends ConsumerWidget {
           const SizedBox(height: 16),
           _DiscountPolicyCard(),
           const SizedBox(height: 16),
+          _QuickCheckoutSettingsCard(),
+          const SizedBox(height: 16),
           _PrinterIntegrationCard(),
           const SizedBox(height: 16),
           _StorefrontShoppingCard(),
@@ -50,6 +53,111 @@ class SettingsPage extends ConsumerWidget {
           ],
           _DemoDataCard(),
         ],
+      ),
+    );
+  }
+}
+
+// ── Shop Settings: Quick Checkout ───────────────────────────────────────────
+
+class _QuickCheckoutSettingsCard extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<_QuickCheckoutSettingsCard> createState() =>
+      _QuickCheckoutSettingsCardState();
+}
+
+class _QuickCheckoutSettingsCardState
+    extends ConsumerState<_QuickCheckoutSettingsCard> {
+  bool _loaded = false;
+  bool _enabled = false;
+  bool _saving = false;
+
+  void _loadOnce(QuickCheckoutConfig config) {
+    if (_loaded) return;
+    _loaded = true;
+    _enabled = config.enabled;
+  }
+
+  Future<void> _save() async {
+    final storeId = ref.read(activeStoreIdProvider);
+    if (storeId == null) return;
+
+    setState(() => _saving = true);
+    try {
+      final config = QuickCheckoutConfig(enabled: _enabled);
+      await storeCollection(ref.read(firestoreProvider), storeId, 'settings')
+          .doc('shop_settings')
+          .set(config.toFirestoreMap(), SetOptions(merge: true));
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Shop settings saved.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Failed: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cfg = ref.watch(quickCheckoutConfigProvider).valueOrNull ??
+        const QuickCheckoutConfig.defaults();
+    _loadOnce(cfg);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.flash_on_rounded, size: 20),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Shop Settings',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18),
+                  ),
+                ),
+                if (_saving)
+                  const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else
+                  TextButton.icon(
+                    onPressed: _save,
+                    icon: const Icon(Icons.save_outlined, size: 16),
+                    label: const Text('Save'),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Enable an additional touch-first sales flow for Kirana stores, tea stalls and pan shops. Standard POS checkout remains unchanged.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 12),
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Enable Quick Checkout'),
+              subtitle: const Text(
+                'Shows a Quick Checkout menu option and large product cards for fast billing.',
+                style: TextStyle(fontSize: 12),
+              ),
+              value: _enabled,
+              onChanged: (v) => setState(() => _enabled = v),
+            ),
+          ],
+        ),
       ),
     );
   }
