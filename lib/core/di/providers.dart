@@ -266,18 +266,24 @@ final cartSummaryProvider =
   double taxTotal = 0;
 
   for (final row in items) {
-    final lineSub = row.item.quantity * row.item.unitPrice;
-    final taxable = lineSub - row.item.discountAmount;
-    subTotal += lineSub;
-    discountTotal += row.item.discountAmount;
-    taxTotal += taxable * (row.item.taxPercent / 100);
+    // Round to 2 decimals at each step to prevent floating-point errors
+    final lineSub = double.parse((row.item.quantity * row.item.unitPrice).toStringAsFixed(2));
+    final itemDiscount = double.parse(row.item.discountAmount.toStringAsFixed(2));
+    final taxable = double.parse((lineSub - itemDiscount).toStringAsFixed(2));
+    final itemTax = double.parse((taxable * (row.item.taxPercent / 100)).toStringAsFixed(2));
+
+    subTotal = double.parse((subTotal + lineSub).toStringAsFixed(2));
+    discountTotal = double.parse((discountTotal + itemDiscount).toStringAsFixed(2));
+    taxTotal = double.parse((taxTotal + itemTax).toStringAsFixed(2));
   }
+
+  final grandTotal = double.parse((subTotal - discountTotal + taxTotal).toStringAsFixed(2));
 
   return CartSummary(
     subTotal: subTotal,
     discountTotal: discountTotal,
     taxTotal: taxTotal,
-    grandTotal: subTotal - discountTotal + taxTotal,
+    grandTotal: grandTotal,
   );
 });
 

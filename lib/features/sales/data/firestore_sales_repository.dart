@@ -199,9 +199,10 @@ class FirestoreSalesRepository implements SalesRepository {
     final itemsSnap = await _cartItems.where('cartId', isEqualTo: cartId).get();
     for (final d in itemsSnap.docs) {
       final item = cartItemFromDoc(d);
-      final lineSub = (item.quantity * item.unitPrice).clamp(0, 999999999);
-      final lineDiscount =
-          (lineSub * (normalized / 100)).clamp(0, lineSub).toDouble();
+      final lineSub = double.parse((item.quantity * item.unitPrice).toStringAsFixed(2)).clamp(0, 999999999).toDouble();
+      // Round discount to 2 decimal places to prevent floating-point errors
+      final discountValue = (lineSub * (normalized / 100));
+      final lineDiscount = double.parse(discountValue.toStringAsFixed(2)).clamp(0, lineSub).toDouble();
       _write(d.reference
           .set({'discountAmount': lineDiscount}, SetOptions(merge: true)));
     }
@@ -576,11 +577,14 @@ class FirestoreSalesRepository implements SalesRepository {
     double subTotal = 0, discountTotal = 0, taxTotal = 0;
     for (final item in items) {
       await _assertStock(item.productId, item.quantity, stock);
-      final lineSub = item.quantity * item.unitPrice;
-      final taxable = lineSub - item.discountAmount;
-      subTotal += lineSub;
-      discountTotal += item.discountAmount;
-      taxTotal += taxable * (item.taxPercent / 100);
+      final lineSub = double.parse((item.quantity * item.unitPrice).toStringAsFixed(2));
+      final itemDiscount = double.parse(item.discountAmount.toStringAsFixed(2));
+      final taxable = double.parse((lineSub - itemDiscount).toStringAsFixed(2));
+      final itemTax = double.parse((taxable * (item.taxPercent / 100)).toStringAsFixed(2));
+
+      subTotal = double.parse((subTotal + lineSub).toStringAsFixed(2));
+      discountTotal = double.parse((discountTotal + itemDiscount).toStringAsFixed(2));
+      taxTotal = double.parse((taxTotal + itemTax).toStringAsFixed(2));
     }
     final effectiveDiscountPercent =
         subTotal <= 0 ? 0.0 : (discountTotal * 100 / subTotal);
@@ -591,14 +595,9 @@ class FirestoreSalesRepository implements SalesRepository {
         'max ${policy.maxBillDiscountPercent.toStringAsFixed(2)}% configured in Settings.',
       );
     }
-    // Round money to 2 decimals (paisa). The paid amount from the UI is already
-    // a 2-decimal value, so comparing it against a raw fractional total (which a
-    // percentage bill discount easily produces) would wrongly reject a full
-    // payment. Compare at paisa precision with a 1-paisa tolerance.
-    final grandTotal =
-        ((subTotal - discountTotal + taxTotal) * 100).roundToDouble() / 100;
-    final normalizedPaid = paidAmount < 0 ? 0.0 : paidAmount;
-    final isFullyPaid = normalizedPaid + 0.01 >= grandTotal;
+    final grandTotal = double.parse((subTotal - discountTotal + taxTotal).toStringAsFixed(2));
+    final normalizedPaid = double.parse((paidAmount < 0 ? 0.0 : paidAmount).toStringAsFixed(2));
+    final isFullyPaid = normalizedPaid >= grandTotal;
     if (!isFullyPaid && paymentMode != 'credit') {
       throw Exception(
           'Paid amount is less than total. Select Credit payment mode for udhar.');

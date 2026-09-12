@@ -82,8 +82,10 @@ class SalesRepositoryImpl implements SalesRepository {
     final normalized = percent.clamp(0, 100).toDouble();
     final items = await (_db.select(_db.cartItems)..where((i) => i.cartId.equals(cartId))).get();
     for (final item in items) {
-      final lineSub = (item.quantity * item.unitPrice).clamp(0, 999999999);
-      final lineDiscount = (lineSub * (normalized / 100)).clamp(0, lineSub).toDouble();
+      final lineSub = double.parse((item.quantity * item.unitPrice).toStringAsFixed(2)).clamp(0, 999999999).toDouble();
+      // Round discount to 2 decimal places to prevent floating-point errors
+      final discountValue = (lineSub * (normalized / 100));
+      final lineDiscount = double.parse(discountValue.toStringAsFixed(2)).clamp(0, lineSub).toDouble();
       await (_db.update(_db.cartItems)..where((i) => i.id.equals(item.id))).write(
         CartItemsCompanion(discountAmount: Value(lineDiscount)),
       );
@@ -479,16 +481,19 @@ class SalesRepositoryImpl implements SalesRepository {
           stock: stock,
         );
 
-        final lineSub = item.quantity * item.unitPrice;
-        final taxable = lineSub - item.discountAmount;
-        subTotal += lineSub;
-        discountTotal += item.discountAmount;
-        taxTotal += taxable * (item.taxPercent / 100);
+        final lineSub = double.parse((item.quantity * item.unitPrice).toStringAsFixed(2));
+        final itemDiscount = double.parse(item.discountAmount.toStringAsFixed(2));
+        final taxable = double.parse((lineSub - itemDiscount).toStringAsFixed(2));
+        final itemTax = double.parse((taxable * (item.taxPercent / 100)).toStringAsFixed(2));
+
+        subTotal = double.parse((subTotal + lineSub).toStringAsFixed(2));
+        discountTotal = double.parse((discountTotal + itemDiscount).toStringAsFixed(2));
+        taxTotal = double.parse((taxTotal + itemTax).toStringAsFixed(2));
       }
 
-      final grandTotal = subTotal - discountTotal + taxTotal;
-      final normalizedPaid = paidAmount < 0 ? 0 : paidAmount;
-      final isFullyPaid = normalizedPaid + 0.0001 >= grandTotal;
+      final grandTotal = double.parse((subTotal - discountTotal + taxTotal).toStringAsFixed(2));
+      final normalizedPaid = double.parse((paidAmount < 0 ? 0 : paidAmount).toStringAsFixed(2));
+      final isFullyPaid = normalizedPaid >= grandTotal;
       if (!isFullyPaid && paymentMode != 'credit') {
         throw Exception('Paid amount is less than total. Select Credit payment mode for udhar.');
       }
