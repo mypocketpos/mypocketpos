@@ -1001,6 +1001,7 @@ class _InvoiceBrandingCardState extends ConsumerState<_InvoiceBrandingCard> {
   final _emailCtrl = TextEditingController();
   final _gstinCtrl = TextEditingController();
   final _prefixCtrl = TextEditingController();
+  final _tokenStartCtrl = TextEditingController();
 
   bool _loaded = false;
   bool _saving = false;
@@ -1013,6 +1014,7 @@ class _InvoiceBrandingCardState extends ConsumerState<_InvoiceBrandingCard> {
     _emailCtrl.dispose();
     _gstinCtrl.dispose();
     _prefixCtrl.dispose();
+    _tokenStartCtrl.dispose();
     super.dispose();
   }
 
@@ -1025,6 +1027,7 @@ class _InvoiceBrandingCardState extends ConsumerState<_InvoiceBrandingCard> {
     _emailCtrl.text = b.email;
     _gstinCtrl.text = b.gstin;
     _prefixCtrl.text = b.invoicePrefix;
+    _tokenStartCtrl.text = b.quickCartTokenStart.toString();
   }
 
   Future<void> _save() async {
@@ -1042,6 +1045,7 @@ class _InvoiceBrandingCardState extends ConsumerState<_InvoiceBrandingCard> {
 
     setState(() => _saving = true);
     try {
+      final tokenStart = int.tryParse(_tokenStartCtrl.text.trim()) ?? 100;
       final branding = InvoiceBranding(
         displayName: _displayNameCtrl.text.trim(),
         address: _addressCtrl.text.trim(),
@@ -1049,6 +1053,7 @@ class _InvoiceBrandingCardState extends ConsumerState<_InvoiceBrandingCard> {
         email: _emailCtrl.text.trim(),
         gstin: _gstinCtrl.text.trim(),
         invoicePrefix: prefix,
+        quickCartTokenStart: tokenStart.clamp(1, 999999),
       );
       await storeCollection(ref.read(firestoreProvider), storeId, 'settings')
           .doc('invoice_branding')
@@ -1189,6 +1194,18 @@ class _InvoiceBrandingCardState extends ConsumerState<_InvoiceBrandingCard> {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _tokenStartCtrl,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Quick Cart Token Start Number',
+                hintText: '100',
+                helperText: 'Starting number for token-based carts (e.g., 100, 101, 102...)',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
             ),
           ],
         ),

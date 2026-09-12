@@ -266,18 +266,24 @@ final cartSummaryProvider =
   double taxTotal = 0;
 
   for (final row in items) {
-    final lineSub = row.item.quantity * row.item.unitPrice;
-    final taxable = lineSub - row.item.discountAmount;
-    subTotal += lineSub;
-    discountTotal += row.item.discountAmount;
-    taxTotal += taxable * (row.item.taxPercent / 100);
+    // Round to 2 decimals at each step to prevent floating-point errors
+    final lineSub = double.parse((row.item.quantity * row.item.unitPrice).toStringAsFixed(2));
+    final itemDiscount = double.parse(row.item.discountAmount.toStringAsFixed(2));
+    final taxable = double.parse((lineSub - itemDiscount).toStringAsFixed(2));
+    final itemTax = double.parse((taxable * (row.item.taxPercent / 100)).toStringAsFixed(2));
+
+    subTotal = double.parse((subTotal + lineSub).toStringAsFixed(2));
+    discountTotal = double.parse((discountTotal + itemDiscount).toStringAsFixed(2));
+    taxTotal = double.parse((taxTotal + itemTax).toStringAsFixed(2));
   }
+
+  final grandTotal = double.parse((subTotal - discountTotal + taxTotal).toStringAsFixed(2));
 
   return CartSummary(
     subTotal: subTotal,
     discountTotal: discountTotal,
     taxTotal: taxTotal,
-    grandTotal: subTotal - discountTotal + taxTotal,
+    grandTotal: grandTotal,
   );
 });
 
@@ -565,10 +571,42 @@ final platformStorefrontShoppingConfigProvider =
   });
 });
 
+/// Non-blocking platform config provider for login page
+/// Returns immediately with cached/default value, loads in background
+final platformStorefrontShoppingConfigNonBlockingProvider =
+    FutureProvider<StorefrontShoppingConfig>((ref) async {
+  try {
+    // Timeout after 2 seconds to avoid blocking UI
+    final future = ref
+        .watch(firestoreProvider)
+        .collection('platform_config')
+        .doc('public_features')
+        .get()
+        .then((snap) {
+      if (!snap.exists || snap.data() == null || snap.data()!.isEmpty) {
+        return const StorefrontShoppingConfig.defaults();
+      }
+      try {
+        return StorefrontShoppingConfig.fromFirestoreMap(snap.data()!);
+      } catch (e) {
+        return const StorefrontShoppingConfig.defaults();
+      }
+    });
+
+    return await future.timeout(
+      const Duration(seconds: 2),
+      onTimeout: () => const StorefrontShoppingConfig.defaults(),
+    );
+  } catch (e) {
+    // On any error, return default
+    return const StorefrontShoppingConfig.defaults();
+  }
+});
+
 final platformAnonymousShoppingEnabledProvider = Provider<bool>((ref) {
-  final cfg = ref.watch(platformStorefrontShoppingConfigProvider).valueOrNull;
-  // Return false if config is null (loading/error state)
-  return cfg?.allowAnonymousShopping ?? false;
+  // Use non-blocking provider - show button by default if config hasn't loaded
+  final cfgAsync = ref.watch(platformStorefrontShoppingConfigNonBlockingProvider);
+  return cfgAsync.valueOrNull?.allowAnonymousShopping ?? true;
 });
 
 /// Store-level opt-in for the public storefront.
