@@ -571,10 +571,42 @@ final platformStorefrontShoppingConfigProvider =
   });
 });
 
+/// Non-blocking platform config provider for login page
+/// Returns immediately with cached/default value, loads in background
+final platformStorefrontShoppingConfigNonBlockingProvider =
+    FutureProvider<StorefrontShoppingConfig>((ref) async {
+  try {
+    // Timeout after 2 seconds to avoid blocking UI
+    final future = ref
+        .watch(firestoreProvider)
+        .collection('platform_config')
+        .doc('public_features')
+        .get()
+        .then((snap) {
+      if (!snap.exists || snap.data() == null || snap.data()!.isEmpty) {
+        return const StorefrontShoppingConfig.defaults();
+      }
+      try {
+        return StorefrontShoppingConfig.fromFirestoreMap(snap.data()!);
+      } catch (e) {
+        return const StorefrontShoppingConfig.defaults();
+      }
+    });
+
+    return await future.timeout(
+      const Duration(seconds: 2),
+      onTimeout: () => const StorefrontShoppingConfig.defaults(),
+    );
+  } catch (e) {
+    // On any error, return default
+    return const StorefrontShoppingConfig.defaults();
+  }
+});
+
 final platformAnonymousShoppingEnabledProvider = Provider<bool>((ref) {
-  final cfg = ref.watch(platformStorefrontShoppingConfigProvider).valueOrNull;
-  // Return false if config is null (loading/error state)
-  return cfg?.allowAnonymousShopping ?? false;
+  // Use non-blocking provider - show button by default if config hasn't loaded
+  final cfgAsync = ref.watch(platformStorefrontShoppingConfigNonBlockingProvider);
+  return cfgAsync.valueOrNull?.allowAnonymousShopping ?? true;
 });
 
 /// Store-level opt-in for the public storefront.

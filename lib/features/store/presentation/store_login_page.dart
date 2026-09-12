@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/di/providers.dart';
 import 'store_auth_controller.dart';
 
 class StoreLoginPage extends ConsumerStatefulWidget {
@@ -53,8 +52,6 @@ class _StoreLoginPageState extends ConsumerState<StoreLoginPage> {
   @override
   Widget build(BuildContext context) {
     final busy = ref.watch(storeAuthControllerProvider).busy;
-    final allowPublicStorefront =
-        ref.watch(platformAnonymousShoppingEnabledProvider);
 
     return Scaffold(
       body: Center(
@@ -76,38 +73,6 @@ class _StoreLoginPageState extends ConsumerState<StoreLoginPage> {
                             fontSize: 22, fontWeight: FontWeight.bold)),
                     const Text('Sign in to your store',
                         style: TextStyle(color: Colors.grey)),
-                    if (!allowPublicStorefront) ...[
-                      const SizedBox(height: 12),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Colors.amber.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.amber.shade300),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(
-                              Icons.info_outline,
-                              size: 18,
-                              color: Colors.amber.shade800,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Public shopping is currently disabled by platform.',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.amber.shade900,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
                     const SizedBox(height: 20),
                     TextField(
                       controller: _storeId,
@@ -173,12 +138,11 @@ class _StoreLoginPageState extends ConsumerState<StoreLoginPage> {
                         label: const Text('Continue with Gmail'),
                       ),
                     ),
-                    if (allowPublicStorefront)
-                      TextButton(
-                        onPressed:
-                            busy ? null : () => context.push('/storefront'),
-                        child: const Text('Continue as customer'),
-                      ),
+                    TextButton(
+                      onPressed:
+                          busy ? null : () => context.push('/storefront'),
+                      child: const Text('Continue as customer'),
+                    ),
                   ],
                 ),
               ),

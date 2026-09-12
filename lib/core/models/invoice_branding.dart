@@ -11,6 +11,7 @@ class InvoiceBranding {
     this.email = '',
     this.gstin = '',
     this.invoicePrefix = 'INV',
+    this.quickCartTokenStart = 100,
   });
 
   const InvoiceBranding.defaults()
@@ -19,7 +20,8 @@ class InvoiceBranding {
         phone = '',
         email = '',
         gstin = '',
-        invoicePrefix = 'INV';
+        invoicePrefix = 'INV',
+        quickCartTokenStart = 100;
 
   /// Store display name shown on the invoice header.
   /// Falls back to the registered store name when empty.
@@ -41,6 +43,10 @@ class InvoiceBranding {
   /// Restricted to 1–8 uppercase characters.
   final String invoicePrefix;
 
+  /// Starting token number for quick carts (e.g., 100, 101, 102...).
+  /// Used when no customer name/mobile is provided.
+  final int quickCartTokenStart;
+
   // ── Serialization ───────────────────────────────────────────────────────────
 
   static InvoiceBranding fromFirestoreMap(Map<String, dynamic>? map) {
@@ -48,6 +54,10 @@ class InvoiceBranding {
     String s(String key) {
       final v = map[key];
       return (v is String) ? v.trim() : '';
+    }
+    int i(String key) {
+      final v = map[key];
+      return (v is int) ? v : (v is num) ? v.toInt() : 100;
     }
 
     final prefix = s('invoicePrefix').toUpperCase();
@@ -58,6 +68,7 @@ class InvoiceBranding {
       email: s('email'),
       gstin: s('gstin'),
       invoicePrefix: prefix.isEmpty ? 'INV' : prefix,
+      quickCartTokenStart: i('quickCartTokenStart'),
     );
   }
 
@@ -70,6 +81,7 @@ class InvoiceBranding {
       'email': email,
       'gstin': gstin,
       'invoicePrefix': prefix.isEmpty ? 'INV' : prefix,
+      'quickCartTokenStart': quickCartTokenStart,
     };
   }
 
@@ -80,6 +92,7 @@ class InvoiceBranding {
     String? email,
     String? gstin,
     String? invoicePrefix,
+    int? quickCartTokenStart,
   }) {
     return InvoiceBranding(
       displayName: displayName ?? this.displayName,
@@ -88,6 +101,7 @@ class InvoiceBranding {
       email: email ?? this.email,
       gstin: gstin ?? this.gstin,
       invoicePrefix: invoicePrefix ?? this.invoicePrefix,
+      quickCartTokenStart: quickCartTokenStart ?? this.quickCartTokenStart,
     );
   }
 }

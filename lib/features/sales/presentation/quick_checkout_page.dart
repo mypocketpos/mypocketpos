@@ -9,6 +9,7 @@ import '../../../core/database/app_database.dart';
 import '../../../core/di/providers.dart';
 import '../../../core/firestore/firestore_mappers.dart';
 import '../../../core/firestore/store_scope.dart';
+import '../../../core/models/invoice_branding.dart';
 import '../../store/presentation/store_auth_controller.dart';
 import '../domain/sales_repository.dart';
 
@@ -162,7 +163,7 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
     try {
       var cartId = ref.read(selectedCartIdProvider);
       if (cartId == null) {
-        cartId = await _createQuickCart();
+        cartId = await _autoCreateQuickCart();
         if (cartId == null) return;
       }
 
@@ -192,44 +193,92 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
     }
   }
 
-  Future<int?> _createQuickCart() async {
-    final mobileCtrl = TextEditingController();
-    final nameCtrl = TextEditingController();
+  /// Auto-create cart with persistent token (date + counter, resets daily)
+  Future<int?> _autoCreateQuickCart() async {
+    try {
+      // Generate date-based token that increments within day, resets daily
+      final today = DateTime.now();
+      final dateStr = '${today.year}${today.month.toString().padLeft(2, '0')}${today.day.toString().padLeft(2, '0')}';
 
-    final result = await showDialog<({String mobile, String name})?>(
+      // Get all carts created today
+      final allCarts = await ref.read(salesRepositoryProvider).watchActiveCarts(null).first;
+      final todaysCartCount = allCarts.where((cart) {
+        // Count carts that have today's date in their name
+        return cart.name.contains(dateStr);
+      }).length;
+
+      // Generate token: TOKEN-YYYYMMDD-001, TOKEN-YYYYMMDD-002, etc
+      final tokenNumber = (todaysCartCount + 1).toString().padLeft(3, '0');
+      final label = 'TOKEN-$dateStr-$tokenNumber';
+
+      final counterId = ref.read(activeCounterIdProvider);
+      final cartId = await ref.read(salesRepositoryProvider).createCart(
+            label,
+            posCounterId: counterId,
+          );
+
+      ref.read(selectedCartIdProvider.notifier).state = cartId;
+      return cartId;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to create cart: $e')),
+        );
+      }
+      return null;
+    }
+  }
+
+  Future<int?> _createQuickCart({Cart? existingCart}) async {
+    final mobileCtrl = TextEditingController(text: existingCart == null ? '' : '');
+    final nameCtrl = TextEditingController();
+    final cartNameCtrl = TextEditingController(text: existingCart?.name ?? '');
+
+    final result = await showDialog<({String mobile, String name, String cartName})?>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('New Quick Cart'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: mobileCtrl,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                labelText: 'Mobile (optional)',
-                border: OutlineInputBorder(),
+        title: Text(existingCart == null ? 'New Quick Cart' : 'Edit Quick Cart'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: mobileCtrl,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'Mobile (optional)',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (value) async {
+                  final mobile = value.trim();
+                  if (mobile.isEmpty) return;
+                  final existing = await ref
+                      .read(customerRepositoryProvider)
+                      .findByMobile(mobile);
+                  if (existing != null && ctx.mounted) {
+                    nameCtrl.text = existing.name;
+                  }
+                },
               ),
-              onChanged: (value) async {
-                final mobile = value.trim();
-                if (mobile.isEmpty) return;
-                final existing = await ref
-                    .read(customerRepositoryProvider)
-                    .findByMobile(mobile);
-                if (existing != null && ctx.mounted) {
-                  nameCtrl.text = existing.name;
-                }
-              },
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: nameCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Name (optional)',
-                border: OutlineInputBorder(),
+              const SizedBox(height: 10),
+              TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Name (optional)',
+                  border: OutlineInputBorder(),
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 10),
+              TextField(
+                controller: cartNameCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Cart Label',
+                  hintText: 'Will auto-generate if blank',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -239,9 +288,13 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
           FilledButton(
             onPressed: () => Navigator.pop(
               ctx,
-              (mobile: mobileCtrl.text.trim(), name: nameCtrl.text.trim()),
+              (
+                mobile: mobileCtrl.text.trim(),
+                name: nameCtrl.text.trim(),
+                cartName: cartNameCtrl.text.trim(),
+              ),
             ),
-            child: const Text('Create'),
+            child: Text(existingCart == null ? 'Create' : 'Save'),
           ),
         ],
       ),
@@ -251,30 +304,52 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
 
     final mobile = result.mobile;
     final name = result.name;
-    final label = name.isNotEmpty
-        ? name
-        : (mobile.isNotEmpty
-            ? mobile
-            : 'Quick Cart ${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}');
+    final customCartName = result.cartName;
+
+    // Generate label: use custom name, or auto-generate from mobile/name/token
+    String label;
+    if (customCartName.isNotEmpty) {
+      label = customCartName;
+    } else if (name.isNotEmpty) {
+      label = name;
+    } else if (mobile.isNotEmpty) {
+      label = mobile;
+    } else {
+      // Auto-generate token number
+      final branding = ref.read(invoiceBrandingProvider).valueOrNull ??
+          const InvoiceBranding.defaults();
+      final carts = await ref.read(salesRepositoryProvider).watchActiveCarts(null).first;
+      final tokenNumber = branding.quickCartTokenStart + carts.length;
+      label = 'Token #$tokenNumber';
+    }
 
     final counterId = ref.read(activeCounterIdProvider);
     int cartId;
-    if (mobile.isNotEmpty) {
-      final customerId =
-          await ref.read(customerRepositoryProvider).createOrUpdate(
-                mobile: mobile,
-                name: name.isNotEmpty ? name : 'Customer $mobile',
-              );
-      cartId = await ref.read(salesRepositoryProvider).createCartWithCustomer(
-            label,
-            customerId,
-            posCounterId: counterId,
-          );
+
+    if (existingCart != null) {
+      // Edit existing cart: rename it
+      cartId = existingCart.id;
+      await ref.read(salesRepositoryProvider).renameCart(cartId, label);
+      // TODO: Update customer association if mobile/name changed
     } else {
-      cartId = await ref.read(salesRepositoryProvider).createCart(
-            label,
-            posCounterId: counterId,
-          );
+      // Create new cart
+      if (mobile.isNotEmpty) {
+        final customerId =
+            await ref.read(customerRepositoryProvider).createOrUpdate(
+                  mobile: mobile,
+                  name: name.isNotEmpty ? name : 'Customer $mobile',
+                );
+        cartId = await ref.read(salesRepositoryProvider).createCartWithCustomer(
+              label,
+              customerId,
+              posCounterId: counterId,
+            );
+      } else {
+        cartId = await ref.read(salesRepositoryProvider).createCart(
+              label,
+              posCounterId: counterId,
+            );
+      }
     }
 
     ref.read(selectedCartIdProvider.notifier).state = cartId;
@@ -649,42 +724,25 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
     );
   }
 
-  Future<void> _editCartName(int cartId, String currentName) async {
-    final nameCtrl = TextEditingController(text: currentName);
-    final newName = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Edit Cart Name'),
-        content: TextField(
-          controller: nameCtrl,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Cart Name',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, nameCtrl.text.trim()),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-
-    if (newName == null || newName.isEmpty || !mounted) return;
-
-    // TODO: Implement cart name update in repository
-    // await ref.read(salesRepositoryProvider).updateCartName(cartId, newName);
+  Future<void> _editCart(Cart cart) async {
+    await _createQuickCart(existingCart: cart);
   }
 
   Future<void> _showCartItemsPopup(int cartId) async {
-    final discountPercentCtrl = TextEditingController();
-    final discountPercentNotifier = ValueNotifier<double>(0);
+    // Calculate current discount from cart items
+    final itemsAsync = await ref.read(salesRepositoryProvider).watchCartItems(cartId).first;
+    double currentDiscountPercent = 0.0;
+
+    if (itemsAsync.isNotEmpty) {
+      final subtotal = itemsAsync.fold<double>(0, (sum, row) => sum + (row.product.sellingPrice * row.item.quantity));
+      final totalDiscount = itemsAsync.fold<double>(0, (sum, row) => sum + row.item.discountAmount);
+      if (subtotal > 0) {
+        currentDiscountPercent = (totalDiscount * 100) / subtotal;
+      }
+    }
+
+    final discountPercentCtrl = TextEditingController(text: currentDiscountPercent > 0 ? currentDiscountPercent.toStringAsFixed(2) : '');
+    final discountPercentNotifier = ValueNotifier<double>(currentDiscountPercent);
 
     if (!mounted) return;
     await showDialog<void>(
@@ -866,11 +924,24 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
                                   child: const Text('Cancel'),
                                 ),
                                 FilledButton(
-                                  onPressed: () {
+                                  onPressed: () async {
                                     final percent =
-                                        double.tryParse(discountPercentCtrl.text) ?? 0;
-                                    discountPercentNotifier.value = percent.clamp(0, 100);
-                                    Navigator.pop(discCtx);
+                                        double.tryParse(discountPercentCtrl.text) ?? 0.0;
+                                    final clampedPercent = percent.clamp(0.0, 100.0);
+
+                                    // Apply discount to cart in database
+                                    try {
+                                      await ref
+                                          .read(salesRepositoryProvider)
+                                          .updateCartDiscountPercent(cartId, clampedPercent);
+                                      discountPercentNotifier.value = clampedPercent;
+                                      if (discCtx.mounted) Navigator.pop(discCtx);
+                                    } catch (e) {
+                                      if (discCtx.mounted) {
+                                        ScaffoldMessenger.of(discCtx)
+                                            .showSnackBar(SnackBar(content: Text('Error: $e')));
+                                      }
+                                    }
                                   },
                                   child: const Text('Apply'),
                                 ),
@@ -973,45 +1044,17 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
               },
             ),
             actions: [
-              TextButton.icon(
+              FilledButton.icon(
                 onPressed: () async {
-                  final confirm = await showDialog<bool>(
-                    context: context,
-                    builder: (confirmCtx) => AlertDialog(
-                      title: const Text('Clear Cart?'),
-                      content: const Text('Remove all items from cart?'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(confirmCtx, false),
-                          child: const Text('Cancel'),
-                        ),
-                        FilledButton(
-                          onPressed: () => Navigator.pop(confirmCtx, true),
-                          child: const Text('Clear'),
-                        ),
-                      ],
-                    ),
-                  );
-                  if (confirm == true) {
-                    final cartItemsAsync = ref.read(cartItemsProvider(cartId));
-                    if (cartItemsAsync is AsyncData) {
-                      final rows = (cartItemsAsync as AsyncData).value;
-                      for (final item in rows) {
-                        await ref
-                            .read(salesRepositoryProvider)
-                            .removeItem(item.item.id);
-                      }
-                      if (ctx.mounted) Navigator.pop(ctx);
-                    }
+                  final itemsAsync = ref.read(cartItemsProvider(cartId));
+                  if (itemsAsync is AsyncData) {
+                    final cartRows = (itemsAsync as AsyncData).value;
+                    if (ctx.mounted) Navigator.pop(ctx);
+                    await _checkoutDirect(cartId, cartRows);
                   }
                 },
-                icon: const Icon(Icons.delete_outline),
-                label: const Text('Clear'),
-              ),
-              FilledButton.icon(
-                onPressed: () => Navigator.pop(ctx),
-                icon: const Icon(Icons.close),
-                label: const Text('Done'),
+                icon: const Icon(Icons.payment_rounded),
+                label: const Text('Checkout & Pay'),
               ),
             ],
           );
@@ -1032,6 +1075,19 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
     final summary = ref.read(cartSummaryProvider(rows));
     final paymentModeCtrl = ValueNotifier<String>('cash');
 
+    // Fetch cart details to get customer info
+    final cart = await ref.read(salesRepositoryProvider).getCart(cartId);
+    final cartCustomerId = cart?.customerId;
+
+    // Fetch customer details if cart has customer
+    String? customerName;
+    String? customerMobile;
+    if (cartCustomerId != null) {
+      final customer = await ref.read(customerRepositoryProvider).getById(cartCustomerId);
+      customerName = customer?.name;
+      customerMobile = customer?.mobile;
+    }
+
     if (!mounted) return;
     final result = await showDialog<({String paymentMode, double paidAmount})?>(
       context: context,
@@ -1046,7 +1102,56 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
                 'Total Amount: ₹${summary.grandTotal.toStringAsFixed(2)}',
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
+              // Show customer details if available
+              if (customerName != null || customerMobile != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.person, size: 16, color: Colors.blue),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (customerName != null)
+                              Text(customerName!, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+                            if (customerMobile != null)
+                              Text(customerMobile!, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ] else ...[
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.warning_amber_rounded, size: 16, color: Colors.orange),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Walk-in Customer (no details)',
+                          style: TextStyle(fontSize: 11, color: Colors.orange),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               const Text('Payment Mode:', style: TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: 8),
               ValueListenableBuilder<String>(
@@ -1086,14 +1191,14 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: const Text('Back'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(
               ctx,
               (paymentMode: paymentModeCtrl.value, paidAmount: summary.grandTotal),
             ),
-            child: const Text('Pay Now'),
+            child: const Text('Next'),
           ),
         ],
       ),
@@ -1101,53 +1206,156 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
 
     if (result == null || !mounted) return;
 
-    // If credit/udhar selected, ask how much to pay now vs credit
+    // If credit/udhar selected, require customer details
     if (result.paymentMode == 'credit') {
+      // Check if customer details exist
+      if (customerName == null || customerMobile == null) {
+        // Prompt for customer details for Udhar
+        if (!mounted) return;
+        final customerResult = await showDialog<({String name, String mobile})?>(
+          context: context,
+          builder: (dialogCtx) {
+            final nameCtrl = TextEditingController(text: customerName ?? '');
+            final mobileCtrl = TextEditingController(text: customerMobile ?? '');
+
+            return AlertDialog(
+              title: const Text('Customer Details Required for Udhar'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Customer Name *',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: mobileCtrl,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(
+                      labelText: 'Mobile Number *',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogCtx),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    if (nameCtrl.text.trim().isEmpty || mobileCtrl.text.trim().isEmpty) {
+                      ScaffoldMessenger.of(dialogCtx).showSnackBar(
+                        const SnackBar(content: Text('Name and Mobile are required for Udhar')),
+                      );
+                      return;
+                    }
+                    Navigator.pop(dialogCtx, (name: nameCtrl.text.trim(), mobile: mobileCtrl.text.trim()));
+                  },
+                  child: const Text('Continue'),
+                ),
+              ],
+            );
+          },
+        );
+
+        if (customerResult == null || !mounted) return;
+        customerName = customerResult.name;
+        customerMobile = customerResult.mobile;
+      }
+
       final paidNowCtrl = TextEditingController();
 
       if (!mounted) return;
       final udharResult = await showDialog<({double paidNow, double creditAmount})?>(
         context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Udhar (Credit Sale)'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Total Amount: ₹${summary.grandTotal.toStringAsFixed(2)}',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: paidNowCtrl,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: 'Amount to Pay Now (₹)',
-                  border: const OutlineInputBorder(),
-                  hintText: '0',
+        builder: (ctx) => StatefulBuilder(
+          builder: (context, setState) => AlertDialog(
+            title: const Text('Udhar (Credit Sale)'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Total Amount: ₹${summary.grandTotal.toStringAsFixed(2)}',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                 ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: paidNowCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: 'Amount to Pay Now (₹)',
+                    border: const OutlineInputBorder(),
+                    hintText: '0',
+                    suffixText: 'Enter amount',
+                  ),
+                  onChanged: (_) {
+                    setState(() {}); // Trigger rebuild to update amounts
+                  },
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Total to Pay:',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    Text(
+                      '₹${summary.grandTotal.toStringAsFixed(2)}',
+                      style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.blue),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Paying Now:',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    Text(
+                      '₹${(double.tryParse(paidNowCtrl.text) ?? 0).toStringAsFixed(2)}',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Credit (Udhar):',
+                      style: TextStyle(fontSize: 12, color: Colors.orange, fontWeight: FontWeight.w600),
+                    ),
+                    Text(
+                      '₹${(summary.grandTotal - (double.tryParse(paidNowCtrl.text) ?? 0)).toStringAsFixed(2)}',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.orange),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Back'),
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Credit Amount: ₹${(summary.grandTotal - (double.tryParse(paidNowCtrl.text) ?? 0)).toStringAsFixed(2)}',
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              FilledButton(
+                onPressed: () {
+                  final paidNow = double.tryParse(paidNowCtrl.text) ?? 0;
+                  final creditAmount = summary.grandTotal - paidNow;
+                  Navigator.pop(ctx, (paidNow: paidNow, creditAmount: creditAmount));
+                },
+                child: const Text('Confirm Udhar'),
               ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                final paidNow = double.tryParse(paidNowCtrl.text) ?? 0;
-                final creditAmount = summary.grandTotal - paidNow;
-                Navigator.pop(ctx, (paidNow: paidNow, creditAmount: creditAmount));
-              },
-              child: const Text('Confirm Udhar'),
-            ),
-          ],
         ),
       );
 
@@ -1296,7 +1504,7 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
                     scrollDirection: Axis.horizontal,
                     children: [
                       FilledButton.tonalIcon(
-                        onPressed: _createQuickCart,
+                        onPressed: _autoCreateQuickCart,
                         icon: const Icon(Icons.add),
                         label: const Text('New Cart'),
                       ),
@@ -1464,15 +1672,12 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
                                 ),
                                 if (selected != null)
                                   Tooltip(
-                                    message: 'Edit cart name',
+                                    message: 'Edit cart',
                                     child: IconButton(
                                       padding: EdgeInsets.zero,
                                       constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                                       icon: const Icon(Icons.edit, size: 16),
-                                      onPressed: () => _editCartName(
-                                        selected!.id,
-                                        selected!.name,
-                                      ),
+                                      onPressed: () => _editCart(selected!),
                                     ),
                                   ),
                               ],
@@ -1490,12 +1695,12 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      OutlinedButton.icon(
+                      FilledButton.icon(
                         onPressed: selectedCartId == null || rows.isEmpty
                             ? null
                             : () => _showCartItemsPopup(selectedCartId),
-                        icon: const Icon(Icons.list_rounded),
-                        label: const Text('Items'),
+                        icon: const Icon(Icons.shopping_cart_checkout_rounded),
+                        label: const Text('Checkout'),
                       ),
                       const SizedBox(width: 8),
                       OutlinedButton.icon(
@@ -1506,12 +1711,42 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
                         label: const Text('Print'),
                       ),
                       const SizedBox(width: 8),
-                      FilledButton.icon(
-                        onPressed: selectedCartId == null || rows.isEmpty
+                      OutlinedButton.icon(
+                        onPressed: selectedCartId == null
                             ? null
-                            : () => _checkoutDirect(selectedCartId, rows),
-                        icon: const Icon(Icons.check_circle_rounded),
-                        label: const Text('Checkout'),
+                            : () async {
+                                final confirm = await showDialog<bool>(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    title: const Text('Clear Cart?'),
+                                    content: Text(
+                                        'Remove all items from "${selected?.name}"?'),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(ctx, false),
+                                        child: const Text('Cancel'),
+                                      ),
+                                      FilledButton(
+                                        onPressed: () => Navigator.pop(ctx, true),
+                                        child: const Text('Clear'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                if (confirm == true && mounted && selectedCartId != null) {
+                                  final rows = await ref
+                                      .read(salesRepositoryProvider)
+                                      .watchCartItems(selectedCartId)
+                                      .first;
+                                  for (final item in rows) {
+                                    await ref
+                                        .read(salesRepositoryProvider)
+                                        .removeItem(item.item.id);
+                                  }
+                                }
+                              },
+                        icon: const Icon(Icons.delete_outline_rounded),
+                        label: const Text('Clear'),
                       ),
                     ],
                   ),
