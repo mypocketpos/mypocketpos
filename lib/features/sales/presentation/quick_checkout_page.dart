@@ -31,6 +31,7 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
   bool _hasMore = true;
   String _query = '';
   Timer? _debounce;
+  bool _isGridView = true;
 
   @override
   void initState() {
@@ -1668,34 +1669,51 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
             child: Column(
               children: [
-                TextField(
-                  controller: _searchCtrl,
-                  decoration: InputDecoration(
-                    hintText: 'Search by name, code or barcode',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    prefixIcon: const Icon(Icons.search_rounded),
-                    suffixIcon: _searchCtrl.text.isEmpty
-                        ? null
-                        : IconButton(
-                            icon: const Icon(Icons.close_rounded),
-                            onPressed: () {
-                              _searchCtrl.clear();
-                              setState(() => _query = '');
-                              _loadInitial();
-                            },
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _searchCtrl,
+                        decoration: InputDecoration(
+                          hintText: 'Search by name, code or barcode',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                  ),
-                  onChanged: (value) {
-                    _debounce?.cancel();
-                    _debounce = Timer(const Duration(milliseconds: 250), () {
-                      if (!mounted) return;
-                      setState(() => _query = value.trim());
-                      _loadInitial();
-                    });
-                    setState(() {});
-                  },
+                          prefixIcon: const Icon(Icons.search_rounded),
+                          suffixIcon: _searchCtrl.text.isEmpty
+                              ? null
+                              : IconButton(
+                                  icon: const Icon(Icons.close_rounded),
+                                  onPressed: () {
+                                    _searchCtrl.clear();
+                                    setState(() => _query = '');
+                                    _loadInitial();
+                                  },
+                                ),
+                        ),
+                        onChanged: (value) {
+                          _debounce?.cancel();
+                          _debounce = Timer(const Duration(milliseconds: 250), () {
+                            if (!mounted) return;
+                            setState(() => _query = value.trim());
+                            _loadInitial();
+                          });
+                          setState(() {});
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      tooltip: _isGridView ? 'List view' : 'Grid view',
+                      onPressed: () => setState(() => _isGridView = !_isGridView),
+                      icon: Icon(_isGridView ? Icons.view_list : Icons.grid_view),
+                      style: IconButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 10),
                 SizedBox(
@@ -1788,61 +1806,115 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
             ),
           ),
           Expanded(
-            child: GridView.builder(
-              controller: _scrollCtrl,
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 220,
-                childAspectRatio: 1.2,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-              ),
-              itemCount: _products.length + (_loading ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (index >= _products.length) {
-                  return const Card(
-                    child: Center(child: CircularProgressIndicator()),
-                  );
-                }
-                final row = _products[index];
-                final busy = _addingProductIds.contains(row.product.id);
+            child: _isGridView
+                ? GridView.builder(
+                    controller: _scrollCtrl,
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                    gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                      maxCrossAxisExtent: 170,
+                      childAspectRatio: 1.0,
+                      crossAxisSpacing: 8,
+                      mainAxisSpacing: 8,
+                    ),
+                    itemCount: _products.length + (_loading ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (index >= _products.length) {
+                        return const Card(
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+                      final row = _products[index];
+                      final busy = _addingProductIds.contains(row.product.id);
 
-                // Count this product in the cart
-                var cartCount = 0.0;
-                for (final item in rows) {
-                  if (item.product.id == row.product.id) {
-                    cartCount = item.item.quantity;
-                    break;
-                  }
-                }
-
-                // Watch stock in real-time from inventory provider
-                return Consumer(
-                  builder: (context, localRef, _) {
-                    final inventoryAsync = localRef.watch(inventoryProvider);
-                    double stock = 0.0;
-
-                    if (inventoryAsync.hasValue) {
-                      final inventoryList = inventoryAsync.asData?.value ?? [];
-                      // Find stock for this product in real-time
-                      for (final item in inventoryList) {
+                      // Count this product in the cart
+                      var cartCount = 0.0;
+                      for (final item in rows) {
                         if (item.product.id == row.product.id) {
-                          stock += item.inventory.availableStock;
+                          cartCount = item.item.quantity;
+                          break;
                         }
                       }
-                    }
 
-                    return _QuickCard(
-                      item: row,
-                      busy: busy,
-                      cartCount: cartCount,
-                      stock: stock,
-                      onTap: () => _onTapProduct(row),
-                    );
-                  },
-                );
-              },
-            ),
+                      // Watch stock in real-time from inventory provider
+                      return Consumer(
+                        builder: (context, localRef, _) {
+                          final inventoryAsync = localRef.watch(inventoryProvider);
+                          double stock = 0.0;
+
+                          if (inventoryAsync.hasValue) {
+                            final inventoryList = inventoryAsync.asData?.value ?? [];
+                            // Find stock for this product in real-time
+                            for (final item in inventoryList) {
+                              if (item.product.id == row.product.id) {
+                                stock += item.inventory.availableStock;
+                              }
+                            }
+                          }
+
+                          return _QuickCard(
+                            item: row,
+                            busy: busy,
+                            cartCount: cartCount,
+                            stock: stock,
+                            onTap: () => _onTapProduct(row),
+                          );
+                        },
+                      );
+                    },
+                  )
+                : ListView.builder(
+                    controller: _scrollCtrl,
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                    itemCount: _products.length + (_loading ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (index >= _products.length) {
+                        return const Padding(
+                          padding: EdgeInsets.all(16),
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+                      final row = _products[index];
+                      final busy = _addingProductIds.contains(row.product.id);
+
+                      // Count this product in the cart
+                      var cartCount = 0.0;
+                      for (final item in rows) {
+                        if (item.product.id == row.product.id) {
+                          cartCount = item.item.quantity;
+                          break;
+                        }
+                      }
+
+                      // Watch stock in real-time from inventory provider
+                      return Consumer(
+                        builder: (context, localRef, _) {
+                          final inventoryAsync = localRef.watch(inventoryProvider);
+                          double stock = 0.0;
+
+                          if (inventoryAsync.hasValue) {
+                            final inventoryList = inventoryAsync.asData?.value ?? [];
+                            // Find stock for this product in real-time
+                            for (final item in inventoryList) {
+                              if (item.product.id == row.product.id) {
+                                stock += item.inventory.availableStock;
+                              }
+                            }
+                          }
+
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: _QuickListItem(
+                              item: row,
+                              busy: busy,
+                              cartCount: cartCount,
+                              stock: stock,
+                              onTap: () => _onTapProduct(row),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
           ),
           SafeArea(
             top: false,
@@ -2007,34 +2079,33 @@ class _QuickCard extends StatelessWidget {
           color: backgroundColor,
         ),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  Expanded(
-                    child: Text(
-                      emoji.isNotEmpty ? emoji : '🛒',
-                      style: const TextStyle(fontSize: 26),
-                    ),
+                  Text(
+                    emoji.isNotEmpty ? emoji : '🛒',
+                    style: const TextStyle(fontSize: 22),
                   ),
+                  const Spacer(),
                   if (isInCart)
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
+                        horizontal: 5,
+                        vertical: 2,
                       ),
                       decoration: BoxDecoration(
                         color: Colors.green,
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
                         '${cartCount.toStringAsFixed(cartCount % 1 == 0 ? 0 : 1)}',
                         style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
-                          fontSize: 12,
+                          fontSize: 10,
                         ),
                       ),
                     )
@@ -2055,30 +2126,34 @@ class _QuickCard extends StatelessWidget {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style:
-                    const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                    const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 3),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    '₹${item.product.sellingPrice.toStringAsFixed(2)}',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w600, fontSize: 16),
+                  Expanded(
+                    child: Text(
+                      '₹${item.product.sellingPrice.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 13),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                   Container(
                     padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                     decoration: BoxDecoration(
                       color: stock <= 0
                           ? Colors.red.shade100
                           : Colors.green.shade100,
-                      borderRadius: BorderRadius.circular(4),
+                      borderRadius: BorderRadius.circular(3),
                     ),
                     child: Text(
-                      'Stock: ${stock.toStringAsFixed(stock % 1 == 0 ? 0 : 1)}',
+                      'S:${stock.toStringAsFixed(stock % 1 == 0 ? 0 : 1)}',
                       style: TextStyle(
-                        fontSize: 10,
+                        fontSize: 8,
                         color: stock <= 0 ? Colors.red : Colors.green,
                         fontWeight: FontWeight.w600,
                       ),
@@ -2086,6 +2161,130 @@ class _QuickCard extends StatelessWidget {
                   ),
                 ],
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickListItem extends StatelessWidget {
+  const _QuickListItem({
+    required this.item,
+    required this.onTap,
+    required this.busy,
+    required this.cartCount,
+    required this.stock,
+  });
+
+  final _QuickProductItem item;
+  final VoidCallback onTap;
+  final bool busy;
+  final double cartCount;
+  final double stock;
+
+  @override
+  Widget build(BuildContext context) {
+    final emoji = item.emoji.trim();
+    final isInCart = cartCount > 0;
+    final backgroundColor = isInCart
+        ? Colors.green.withValues(alpha: 0.15)
+        : Theme.of(context).colorScheme.surfaceContainerHighest;
+    final borderColor = isInCart ? Colors.green : const Color(0xFFE3E3E3);
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: busy ? null : onTap,
+      child: Ink(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: borderColor,
+            width: isInCart ? 2 : 1,
+          ),
+          color: backgroundColor,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            children: [
+              Text(
+                emoji.isNotEmpty ? emoji : '🛒',
+                style: const TextStyle(fontSize: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      item.product.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Text(
+                          '₹${item.product.sellingPrice.toStringAsFixed(2)}',
+                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                        const Spacer(),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: stock <= 0
+                                ? Colors.red.shade100
+                                : Colors.green.shade100,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            'Stock: ${stock.toStringAsFixed(stock % 1 == 0 ? 0 : 1)}',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: stock <= 0 ? Colors.red : Colors.green,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              if (isInCart)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.green,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${cartCount.toStringAsFixed(cartCount % 1 == 0 ? 0 : 1)}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                )
+              else if (busy)
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                Icon(Icons.add_circle_rounded,
+                    color: Theme.of(context).colorScheme.primary),
             ],
           ),
         ),
