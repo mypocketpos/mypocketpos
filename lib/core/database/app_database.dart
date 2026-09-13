@@ -80,6 +80,12 @@ class Products extends Table {
   TextColumn get imagePath => text().nullable()();
   TextColumn get description => text().nullable()();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  // Loose product fields
+  BoolColumn get isLooseProduct => boolean().withDefault(const Constant(false))();
+  TextColumn get baseUnit => text().withDefault(const Constant('piece'))();
+  RealColumn get defaultSellingQty => real().withDefault(const Constant(1))();
+  RealColumn get minSellingQty => real().withDefault(const Constant(0.01))();
+  RealColumn get stepQty => real().withDefault(const Constant(0.1))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 

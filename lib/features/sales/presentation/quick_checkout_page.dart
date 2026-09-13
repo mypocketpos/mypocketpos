@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/di/providers.dart';
@@ -1211,6 +1212,22 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
     );
   }
 
+  Future<void> _scanBarcode() async {
+    if (!mounted) return;
+
+    final barcode = await Navigator.of(context).push<String?>(
+      MaterialPageRoute(
+        builder: (context) => const _BarcodeScanner(),
+      ),
+    );
+
+    if (barcode != null && barcode.isNotEmpty && mounted) {
+      _searchCtrl.text = barcode;
+      setState(() => _query = barcode.trim());
+      _loadInitial();
+    }
+  }
+
   Future<void> _checkoutDirect(
       int cartId, List<CartItemWithProduct> rows) async {
     if (rows.isEmpty) {
@@ -1700,6 +1717,17 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
                           });
                           setState(() {});
                         },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      tooltip: 'Scan barcode',
+                      onPressed: _scanBarcode,
+                      icon: const Icon(Icons.qr_code_scanner_rounded),
+                      style: IconButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -2311,6 +2339,62 @@ class _QuickProductItem {
       product: productFromDoc(doc),
       showInQuickCheckout: data['showInQuickCheckout'] == true,
       emoji: (data['quickCheckoutEmoji'] as String?)?.trim() ?? '',
+    );
+  }
+}
+
+class _BarcodeScanner extends StatefulWidget {
+  const _BarcodeScanner();
+
+  @override
+  State<_BarcodeScanner> createState() => _BarcodeScannerState();
+}
+
+class _BarcodeScannerState extends State<_BarcodeScanner> {
+  late MobileScannerController controller;
+  bool _isTorchOn = false;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = MobileScannerController();
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Scan Barcode'),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: Icon(_isTorchOn ? Icons.flash_on : Icons.flash_off),
+            onPressed: () async {
+              await controller.toggleTorch();
+              setState(() => _isTorchOn = !_isTorchOn);
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      ),
+      body: MobileScanner(
+        controller: controller,
+        onDetect: (capture) {
+          final barcode = capture.barcodes.firstOrNull;
+          if (barcode != null && barcode.rawValue != null && mounted) {
+            Navigator.pop(context, barcode.rawValue);
+          }
+        },
+      ),
     );
   }
 }
