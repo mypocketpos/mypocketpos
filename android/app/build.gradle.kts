@@ -38,6 +38,36 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+
+            // Enable minification and shrinking
+            isMinifyEnabled = true
+            isShrinkResources = true
+
+            // Strip debug symbols to reduce size
+            ndk {
+                debugSymbolLevel = "full"
+            }
+
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
+    }
+
+    // Bundle configuration for optimal AAB size
+    bundle {
+        language {
+            // Keep only important languages, remove unused ones
+            enableSplit = true
+        }
+        density {
+            // Split APKs by screen density
+            enableSplit = true
+        }
+        abi {
+            // Split APKs by CPU architecture
+            enableSplit = true
         }
     }
 }
