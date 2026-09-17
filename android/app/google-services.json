@@ -12,7 +12,44 @@
           "package_name": "com.mypocketpos.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "1086638616306-1pb5gfbabm890j3d0f1rflatn045e7st.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mypocketpos.app",
+            "certificate_hash": "dae40064d4c59d37545f37a1f1c10fcaa9b368bd"
+          }
+        },
+        {
+          "client_id": "1086638616306-1st61mf8ntv89a7jt552lvh4bd0nk835.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mypocketpos.app",
+            "certificate_hash": "dd73e99d9f9655bf6ede8b3fc687de07cc8abdbf"
+          }
+        },
+        {
+          "client_id": "1086638616306-f74ljrnrtva9867sd0ha6s6760eu4m56.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mypocketpos.app",
+            "certificate_hash": "4360d2a91d2bd5fe23bcddbf0652913b9c5f3dca"
+          }
+        },
+        {
+          "client_id": "1086638616306-isv8b3s7uuk85ame5skr28sl01asuq8i.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mypocketpos.app",
+            "certificate_hash": "4a552c34a9b85d5e22b9a4978267e984ea11b711"
+          }
+        },
+        {
+          "client_id": "1086638616306-ug6qjl15rep9v788r7rqvhf6t41hk6uf.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBe02E-0kQbI4PMxxES4dYyD5RlqyuiOsw"
@@ -20,7 +57,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1086638616306-ug6qjl15rep9v788r7rqvhf6t41hk6uf.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
