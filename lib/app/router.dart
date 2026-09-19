@@ -13,7 +13,11 @@ import '../core/di/providers.dart';
 import '../features/dashboard/presentation/dashboard_page.dart';
 import '../features/inventory/presentation/inventory_page.dart';
 import '../features/pos_counters/presentation/pos_counters_page.dart';
+import '../features/products/presentation/quick_invoice_page.dart';
+import '../features/products/presentation/quick_invoice_report_page.dart';
+import '../features/products/presentation/product_import_page.dart';
 import '../features/products/presentation/product_page.dart';
+import '../features/purchases/presentation/purchase_import_page.dart';
 import '../features/purchases/presentation/purchase_page.dart';
 import '../features/ledger/presentation/credit_ledger_page.dart';
 import '../features/reports/presentation/sales_report_page.dart';
@@ -113,6 +117,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               path: '/products',
               builder: (context, state) => const ProductPage()),
           GoRoute(
+              path: '/quick-invoice',
+              builder: (context, state) => QuickInvoicePage(
+                    invoiceId: state.uri.queryParameters['id'],
+                  )),
+          GoRoute(
+              path: '/quick-invoice-report',
+              builder: (context, state) => const QuickInvoiceReportPage()),
+          GoRoute(
+              path: '/product-import',
+              builder: (context, state) => const ProductImportPage()),
+          GoRoute(
               path: '/inventory',
               builder: (context, state) => const InventoryPage()),
           GoRoute(
@@ -160,6 +175,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               return PurchasePage(initialSupplierId: supplierId);
             },
           ),
+          GoRoute(
+              path: '/purchase-import',
+              builder: (context, state) => const PurchaseImportPage()),
           GoRoute(
               path: '/reports',
               builder: (context, state) => const SalesReportPage()),
@@ -216,6 +234,7 @@ class _AppShell extends ConsumerWidget {
         ref.watch(inventoryModeProvider).valueOrNull ?? InventoryMode.single;
     final isRiceMill = ref.watch(isRiceMillProvider);
     final quickCheckoutEnabled = ref.watch(quickCheckoutEnabledProvider);
+    final quickInvoiceEnabled = ref.watch(quickInvoiceEnabledProvider);
 
     // Keep the warehouse + inventory caches warm for the whole authenticated
     // session. Firestore's one-time .get() throws ("client is offline") for a
@@ -262,6 +281,12 @@ class _AppShell extends ConsumerWidget {
           route: '/quick-checkout',
           label: 'Quick Checkout',
           icon: Icons.flash_on_rounded
+        ),
+      if (quickInvoiceEnabled)
+        (
+          route: '/quick-invoice',
+          label: 'Quick Invoice',
+          icon: Icons.receipt_long_rounded
         ),
       (
         route: '/customers',

@@ -98,6 +98,31 @@ class FirestoreSalesRepository implements SalesRepository {
   }
 
   @override
+  Future<int> nextQuickCartTokenNumber({
+    required DateTime day,
+    required int startingNumber,
+  }) async {
+    final normalizedStart = startingNumber.clamp(1, 999999);
+    final prefix = _dailyQuickTokenPrefix(day);
+    final snap = await _carts
+        .where('name', isGreaterThanOrEqualTo: prefix)
+        .where('name', isLessThanOrEqualTo: '$prefix\uf8ff')
+        .get();
+
+    var maxUsed = normalizedStart - 1;
+    for (final doc in snap.docs) {
+      final tokenNumber = _parseQuickTokenNumber(
+        (doc.data()['name'] as String?)?.trim() ?? '',
+        prefix,
+      );
+      if (tokenNumber != null && tokenNumber > maxUsed) {
+        maxUsed = tokenNumber;
+      }
+    }
+    return maxUsed + 1;
+  }
+
+  @override
   Stream<List<CartItemWithProduct>> watchCartItems(int cartId) {
     return _cartItems
         .where('cartId', isEqualTo: cartId)
@@ -143,6 +168,17 @@ class FirestoreSalesRepository implements SalesRepository {
       'updatedAt': FieldValue.serverTimestamp(),
     }));
     return id;
+  }
+
+  String _dailyQuickTokenPrefix(DateTime day) {
+    final dateStr =
+        '${day.year}${day.month.toString().padLeft(2, '0')}${day.day.toString().padLeft(2, '0')}';
+    return 'TOKEN-$dateStr-';
+  }
+
+  int? _parseQuickTokenNumber(String label, String prefix) {
+    if (!label.startsWith(prefix)) return null;
+    return int.tryParse(label.substring(prefix.length));
   }
 
   @override
@@ -199,10 +235,15 @@ class FirestoreSalesRepository implements SalesRepository {
     final itemsSnap = await _cartItems.where('cartId', isEqualTo: cartId).get();
     for (final d in itemsSnap.docs) {
       final item = cartItemFromDoc(d);
-      final lineSub = double.parse((item.quantity * item.unitPrice).toStringAsFixed(2)).clamp(0, 999999999).toDouble();
+      final lineSub =
+          double.parse((item.quantity * item.unitPrice).toStringAsFixed(2))
+              .clamp(0, 999999999)
+              .toDouble();
       // Round discount to 2 decimal places to prevent floating-point errors
       final discountValue = (lineSub * (normalized / 100));
-      final lineDiscount = double.parse(discountValue.toStringAsFixed(2)).clamp(0, lineSub).toDouble();
+      final lineDiscount = double.parse(discountValue.toStringAsFixed(2))
+          .clamp(0, lineSub)
+          .toDouble();
       _write(d.reference
           .set({'discountAmount': lineDiscount}, SetOptions(merge: true)));
     }
@@ -577,13 +618,16 @@ class FirestoreSalesRepository implements SalesRepository {
     double subTotal = 0, discountTotal = 0, taxTotal = 0;
     for (final item in items) {
       await _assertStock(item.productId, item.quantity, stock);
-      final lineSub = double.parse((item.quantity * item.unitPrice).toStringAsFixed(2));
+      final lineSub =
+          double.parse((item.quantity * item.unitPrice).toStringAsFixed(2));
       final itemDiscount = double.parse(item.discountAmount.toStringAsFixed(2));
       final taxable = double.parse((lineSub - itemDiscount).toStringAsFixed(2));
-      final itemTax = double.parse((taxable * (item.taxPercent / 100)).toStringAsFixed(2));
+      final itemTax =
+          double.parse((taxable * (item.taxPercent / 100)).toStringAsFixed(2));
 
       subTotal = double.parse((subTotal + lineSub).toStringAsFixed(2));
-      discountTotal = double.parse((discountTotal + itemDiscount).toStringAsFixed(2));
+      discountTotal =
+          double.parse((discountTotal + itemDiscount).toStringAsFixed(2));
       taxTotal = double.parse((taxTotal + itemTax).toStringAsFixed(2));
     }
     final effectiveDiscountPercent =
@@ -595,8 +639,10 @@ class FirestoreSalesRepository implements SalesRepository {
         'max ${policy.maxBillDiscountPercent.toStringAsFixed(2)}% configured in Settings.',
       );
     }
-    final grandTotal = double.parse((subTotal - discountTotal + taxTotal).toStringAsFixed(2));
-    final normalizedPaid = double.parse((paidAmount < 0 ? 0.0 : paidAmount).toStringAsFixed(2));
+    final grandTotal =
+        double.parse((subTotal - discountTotal + taxTotal).toStringAsFixed(2));
+    final normalizedPaid =
+        double.parse((paidAmount < 0 ? 0.0 : paidAmount).toStringAsFixed(2));
     final isFullyPaid = normalizedPaid >= grandTotal;
     if (!isFullyPaid && paymentMode != 'credit') {
       throw Exception(
@@ -683,21 +729,21 @@ class FirestoreSalesRepository implements SalesRepository {
   Future<Sale?> findByInvoiceNo(String invoiceNo) async {
     final trimmed = invoiceNo.trim();
     if (trimmed.isEmpty) return null;
-    final snap = await _sales.where('invoiceNo', isEqualTo: trimmed).limit(1).get();
+    final snap =
+        await _sales.where('invoiceNo', isEqualTo: trimmed).limit(1).get();
     if (snap.docs.isEmpty) return null;
     return saleFromDoc(snap.docs.first);
   }
 
   @override
-  Future<List<Sale>> findSalesByCustomerMobile(String mobile, {int limit = 10}) async {
+  Future<List<Sale>> findSalesByCustomerMobile(String mobile,
+      {int limit = 10}) async {
     final trimmed = mobile.trim();
     if (trimmed.isEmpty) return [];
 
     // First, find the customer by mobile
-    final customerSnap = await _customers
-        .where('mobile', isEqualTo: trimmed)
-        .limit(1)
-        .get();
+    final customerSnap =
+        await _customers.where('mobile', isEqualTo: trimmed).limit(1).get();
 
     if (customerSnap.docs.isEmpty) return [];
 

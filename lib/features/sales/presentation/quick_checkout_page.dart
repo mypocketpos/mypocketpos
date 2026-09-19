@@ -10,6 +10,8 @@ import '../../../core/di/providers.dart';
 import '../../../core/firestore/firestore_mappers.dart';
 import '../../../core/firestore/store_scope.dart';
 import '../../../core/models/invoice_branding.dart';
+import '../../barcode/presentation/barcode_scanner_page.dart';
+import '../../barcode/presentation/hid_scanner_listener.dart';
 import '../../store/presentation/store_auth_controller.dart';
 import '../domain/sales_repository.dart';
 
@@ -56,6 +58,8 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
     return storeCollection(ref.read(firestoreProvider), storeId, 'products');
   }
 
+  bool get _isCartUpdating => _addingProductIds.isNotEmpty;
+
   void _onScroll() {
     if (_query.isNotEmpty || _loading || !_hasMore) return;
     if (!_scrollCtrl.hasClients) return;
@@ -86,11 +90,8 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
 
     setState(() => _loading = true);
     try {
-      Query<Map<String, dynamic>> q = col
-          .where('isActive', isEqualTo: true)
-          .where('showInQuickCheckout', isEqualTo: true)
-          .orderBy('name')
-          .limit(limit);
+      Query<Map<String, dynamic>> q =
+          col.where('isActive', isEqualTo: true).orderBy('name').limit(limit);
       if (_cursor != null) {
         q = q.startAfterDocument(_cursor!);
       }
@@ -98,6 +99,7 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
       final snap = await q.get();
       final incoming = snap.docs
           .map((doc) => _QuickProductItem.fromDoc(doc))
+          .where((row) => !row.hideFromQuickCheckout)
           .where((row) => row.product.name.trim().isNotEmpty)
           .toList();
 
@@ -136,13 +138,13 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
       final result = rows
           .map((p) => _QuickProductItem(
                 product: p,
-                showInQuickCheckout: false,
+                hideFromQuickCheckout: false,
                 emoji: '',
               ))
-          .toList();
+          .toList(growable: false);
       if (mounted) {
         setState(() {
-          _products = result;
+          _products = <_QuickProductItem>[...result];
           _hasMore = false;
         });
       }
@@ -158,7 +160,7 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
   }
 
   Future<void> _onTapProduct(_QuickProductItem row) async {
-    if (_addingProductIds.contains(row.product.id)) return;
+    if (_isCartUpdating || _addingProductIds.contains(row.product.id)) return;
 
     setState(() => _addingProductIds.add(row.product.id));
     try {
@@ -194,25 +196,42 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
     }
   }
 
+  Future<void> _scanAndSearchProduct() async {
+    final scanned = await scanBarcodeWithCamera(context);
+    if (!mounted || scanned == null || scanned.trim().isEmpty) return;
+    _searchCtrl.text = scanned.trim();
+    setState(() => _query = scanned.trim());
+    await _runSearch(scanned.trim());
+  }
+
+  Future<void> _handleScannerInput(String scanned) async {
+    final value = scanned.trim();
+    if (value.isEmpty) return;
+    _searchCtrl.text = value;
+    if (mounted) {
+      setState(() => _query = value);
+    }
+    await _runSearch(value);
+  }
+
+  Future<String> _nextDailyTokenLabel() async {
+    final branding = ref.read(invoiceBrandingProvider).valueOrNull ??
+        const InvoiceBranding.defaults();
+    final today = DateTime.now();
+    final dateStr =
+        '${today.year}${today.month.toString().padLeft(2, '0')}${today.day.toString().padLeft(2, '0')}';
+    final nextTokenNumber =
+        await ref.read(salesRepositoryProvider).nextQuickCartTokenNumber(
+              day: today,
+              startingNumber: branding.quickCartTokenStart,
+            );
+    return 'TOKEN-$dateStr-${nextTokenNumber.toString().padLeft(3, '0')}';
+  }
+
   /// Auto-create cart with persistent token (date + counter, resets daily)
   Future<int?> _autoCreateQuickCart() async {
     try {
-      // Generate date-based token that increments within day, resets daily
-      final today = DateTime.now();
-      final dateStr =
-          '${today.year}${today.month.toString().padLeft(2, '0')}${today.day.toString().padLeft(2, '0')}';
-
-      // Get all carts created today
-      final allCarts =
-          await ref.read(salesRepositoryProvider).watchActiveCarts(null).first;
-      final todaysCartCount = allCarts.where((cart) {
-        // Count carts that have today's date in their name
-        return cart.name.contains(dateStr);
-      }).length;
-
-      // Generate token: TOKEN-YYYYMMDD-001, TOKEN-YYYYMMDD-002, etc
-      final tokenNumber = (todaysCartCount + 1).toString().padLeft(3, '0');
-      final label = 'TOKEN-$dateStr-$tokenNumber';
+      final label = await _nextDailyTokenLabel();
 
       final counterId = ref.read(activeCounterIdProvider);
       final cartId = await ref.read(salesRepositoryProvider).createCart(
@@ -337,13 +356,7 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
     } else if (mobile.isNotEmpty) {
       label = mobile;
     } else {
-      // Auto-generate token number
-      final branding = ref.read(invoiceBrandingProvider).valueOrNull ??
-          const InvoiceBranding.defaults();
-      final carts =
-          await ref.read(salesRepositoryProvider).watchActiveCarts(null).first;
-      final tokenNumber = branding.quickCartTokenStart + carts.length;
-      label = 'Token #$tokenNumber';
+      label = await _nextDailyTokenLabel();
     }
 
     final counterId = ref.read(activeCounterIdProvider);
@@ -738,7 +751,8 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text('Discount',
-                              style: TextStyle(fontSize: 10, color: Colors.green)),
+                              style:
+                                  TextStyle(fontSize: 10, color: Colors.green)),
                           Text('-₹${summary.discountTotal.toStringAsFixed(2)}',
                               style: const TextStyle(
                                   fontSize: 10,
@@ -754,8 +768,7 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
                       children: [
                         const Text('Subtotal',
                             style: TextStyle(fontSize: 10, color: Colors.grey)),
-                        Text(
-                            '₹${(summary.subTotal.toStringAsFixed(2))}',
+                        Text('₹${(summary.subTotal.toStringAsFixed(2))}',
                             style: const TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w600,
@@ -1524,17 +1537,17 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
       try {
         // Create/update customer from Udhar dialog
         await ref.read(customerRepositoryProvider).createOrUpdate(
-          mobile: udharResult.mobile,
-          name: udharResult.name,
-        );
+              mobile: udharResult.mobile,
+              name: udharResult.name,
+            );
 
         await ref.read(salesRepositoryProvider).checkout(
-          cartId: cartId,
-          paymentMode: 'credit',
-          paidAmount: udharResult.paidNow,
-          customerName: udharResult.name,
-          customerMobile: udharResult.mobile,
-        );
+              cartId: cartId,
+              paymentMode: 'credit',
+              paidAmount: udharResult.paidNow,
+              customerName: udharResult.name,
+              customerMobile: udharResult.mobile,
+            );
         ref.invalidate(dashboardMetricsProvider);
         ref.invalidate(salesReportProvider);
         ref.read(selectedCartIdProvider.notifier).state = null;
@@ -1569,22 +1582,24 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
         checkoutCustomerName = customerName;
         checkoutCustomerMobile = customerMobile;
         await ref.read(customerRepositoryProvider).createOrUpdate(
-          mobile: customerMobile,
-          name: customerName,
-        );
+              mobile: customerMobile,
+              name: customerName,
+            );
       } else {
         // No customer details - use Walk-in Customer
         checkoutCustomerName = 'Walk-in Customer';
         checkoutCustomerMobile = '0000000000';
         try {
           // Try to find or create Walk-in Customer
-          final walkInCustomer = await ref.read(customerRepositoryProvider).findByMobile('0000000000');
+          final walkInCustomer = await ref
+              .read(customerRepositoryProvider)
+              .findByMobile('0000000000');
           if (walkInCustomer == null) {
             // Create Walk-in Customer if doesn't exist
             await ref.read(customerRepositoryProvider).createOrUpdate(
-              mobile: '0000000000',
-              name: 'Walk-in Customer',
-            );
+                  mobile: '0000000000',
+                  name: 'Walk-in Customer',
+                );
           }
         } catch (e) {
           // Ignore if Walk-in customer creation fails
@@ -1592,12 +1607,12 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
       }
 
       await ref.read(salesRepositoryProvider).checkout(
-        cartId: cartId,
-        paymentMode: result.paymentMode,
-        paidAmount: result.paidAmount,
-        customerName: checkoutCustomerName,
-        customerMobile: checkoutCustomerMobile,
-      );
+            cartId: cartId,
+            paymentMode: result.paymentMode,
+            paidAmount: result.paidAmount,
+            customerName: checkoutCustomerName,
+            customerMobile: checkoutCustomerMobile,
+          );
       ref.invalidate(dashboardMetricsProvider);
       ref.invalidate(salesReportProvider);
       ref.read(selectedCartIdProvider.notifier).state = null;
@@ -1645,112 +1660,426 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
     final qty = rows.fold<double>(0, (sum, row) => sum + row.item.quantity);
     final total = summary.grandTotal;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Quick Checkout'),
-        actions: [
-          IconButton(
-            tooltip: 'Find Invoice',
-            onPressed: _showInvoiceSearch,
-            icon: const Icon(Icons.search_rounded),
-          ),
-          const SizedBox(width: 8),
-          IconButton(
-            tooltip: 'Open standard POS',
-            onPressed: () => context.go('/billing'),
-            icon: const Icon(Icons.point_of_sale_rounded),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _searchCtrl,
-                        decoration: InputDecoration(
-                          hintText: 'Search by name, code or barcode',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          prefixIcon: const Icon(Icons.search_rounded),
-                          suffixIcon: _searchCtrl.text.isEmpty
-                              ? null
-                              : IconButton(
-                                  icon: const Icon(Icons.close_rounded),
-                                  onPressed: () {
-                                    _searchCtrl.clear();
-                                    setState(() => _query = '');
-                                    _loadInitial();
-                                  },
+    return HidScannerListener(
+      onScan: _handleScannerInput,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Quick Checkout'),
+          actions: [
+            IconButton(
+              tooltip: 'Find Invoice',
+              onPressed: _isCartUpdating ? null : _showInvoiceSearch,
+              icon: const Icon(Icons.search_rounded),
+            ),
+            const SizedBox(width: 4),
+            IconButton(
+              tooltip: _isGridView ? 'List view' : 'Grid view',
+              onPressed: _isCartUpdating
+                  ? null
+                  : () => setState(() => _isGridView = !_isGridView),
+              icon: Icon(_isGridView ? Icons.view_list : Icons.grid_view),
+            ),
+            const SizedBox(width: 4),
+            IconButton(
+              tooltip: 'Open standard POS',
+              onPressed: _isCartUpdating ? null : () => context.go('/billing'),
+              icon: const Icon(Icons.point_of_sale_rounded),
+            ),
+            const SizedBox(width: 8),
+          ],
+        ),
+        body: Stack(
+          children: [
+            IgnorePointer(
+              ignoring: _isCartUpdating,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _searchCtrl,
+                                decoration: InputDecoration(
+                                  hintText: 'Search by name, code or barcode',
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  prefixIcon: const Icon(Icons.search_rounded),
+                                  suffixIcon: _searchCtrl.text.isEmpty
+                                      ? null
+                                      : IconButton(
+                                          icon: const Icon(Icons.close_rounded),
+                                          onPressed: () {
+                                            _searchCtrl.clear();
+                                            setState(() => _query = '');
+                                            _loadInitial();
+                                          },
+                                        ),
                                 ),
+                                onChanged: (value) {
+                                  _debounce?.cancel();
+                                  _debounce = Timer(
+                                    const Duration(milliseconds: 250),
+                                    () {
+                                      if (!mounted) return;
+                                      setState(() => _query = value.trim());
+                                      _loadInitial();
+                                    },
+                                  );
+                                  setState(() {});
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              tooltip: 'Scan barcode',
+                              onPressed: _scanAndSearchProduct,
+                              icon: const Icon(Icons.qr_code_scanner_rounded),
+                              style: IconButton.styleFrom(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        onChanged: (value) {
-                          _debounce?.cancel();
-                          _debounce = Timer(const Duration(milliseconds: 250), () {
-                            if (!mounted) return;
-                            setState(() => _query = value.trim());
-                            _loadInitial();
-                          });
-                          setState(() {});
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      tooltip: _isGridView ? 'List view' : 'Grid view',
-                      onPressed: () => setState(() => _isGridView = !_isGridView),
-                      icon: Icon(_isGridView ? Icons.view_list : Icons.grid_view),
-                      style: IconButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          height: 44,
+                          child: ListView(
+                            scrollDirection: Axis.horizontal,
+                            children: [
+                              FilledButton.tonalIcon(
+                                onPressed: _autoCreateQuickCart,
+                                icon: const Icon(Icons.add),
+                                label: const Text('New Cart'),
+                              ),
+                              const SizedBox(width: 8),
+                              for (final c in carts)
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: c.id == selectedCartId
+                                      ? Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            ChoiceChip(
+                                              selected: true,
+                                              label: Text(c.name),
+                                              onSelected: (_) => ref
+                                                  .read(selectedCartIdProvider
+                                                      .notifier)
+                                                  .state = c.id,
+                                            ),
+                                            const SizedBox(width: 4),
+                                            InkWell(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              onTap: () async {
+                                                final confirm =
+                                                    await showDialog<bool>(
+                                                  context: context,
+                                                  builder: (ctx) => AlertDialog(
+                                                    title: const Text(
+                                                        'Delete Cart?'),
+                                                    content: Text(
+                                                        'Delete "${c.name}" and all items?'),
+                                                    actions: [
+                                                      TextButton(
+                                                        onPressed: () =>
+                                                            Navigator.pop(
+                                                                ctx, false),
+                                                        child: const Text(
+                                                            'Cancel'),
+                                                      ),
+                                                      FilledButton(
+                                                        onPressed: () =>
+                                                            Navigator.pop(
+                                                                ctx, true),
+                                                        child: const Text(
+                                                            'Delete'),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                );
+                                                if (confirm == true &&
+                                                    mounted) {
+                                                  await ref
+                                                      .read(
+                                                          salesRepositoryProvider)
+                                                      .deleteCart(c.id);
+                                                  ref
+                                                      .read(
+                                                          selectedCartIdProvider
+                                                              .notifier)
+                                                      .state = null;
+                                                }
+                                              },
+                                              child: Container(
+                                                padding:
+                                                    const EdgeInsets.all(6),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.red.shade600,
+                                                  shape: BoxShape.circle,
+                                                ),
+                                                child: const Icon(
+                                                  Icons.close,
+                                                  size: 14,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        )
+                                      : ChoiceChip(
+                                          selected: false,
+                                          label: Text(c.name),
+                                          onSelected: (_) => ref
+                                              .read(selectedCartIdProvider
+                                                  .notifier)
+                                              .state = c.id,
+                                        ),
+                                ),
+                            ],
+                          ),
                         ),
-                      ),
+                        const SizedBox(height: 10),
+                      ],
                     ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  height: 44,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    children: [
-                      FilledButton.tonalIcon(
-                        onPressed: _autoCreateQuickCart,
-                        icon: const Icon(Icons.add),
-                        label: const Text('New Cart'),
+                  ),
+                  Expanded(
+                    child: _isGridView
+                        ? GridView.builder(
+                            controller: _scrollCtrl,
+                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                            gridDelegate:
+                                const SliverGridDelegateWithMaxCrossAxisExtent(
+                              maxCrossAxisExtent: 170,
+                              childAspectRatio: 1.0,
+                              crossAxisSpacing: 8,
+                              mainAxisSpacing: 8,
+                            ),
+                            itemCount: _products.length + (_loading ? 1 : 0),
+                            itemBuilder: (context, index) {
+                              if (index >= _products.length) {
+                                return const Card(
+                                  child: Center(
+                                      child: CircularProgressIndicator()),
+                                );
+                              }
+                              final row = _products[index];
+                              final busy =
+                                  _addingProductIds.contains(row.product.id);
+
+                              // Count this product in the cart
+                              var cartCount = 0.0;
+                              for (final item in rows) {
+                                if (item.product.id == row.product.id) {
+                                  cartCount = item.item.quantity;
+                                  break;
+                                }
+                              }
+
+                              // Watch stock in real-time from inventory provider
+                              return Consumer(
+                                builder: (context, localRef, _) {
+                                  final inventoryAsync =
+                                      localRef.watch(inventoryProvider);
+                                  double stock = 0.0;
+
+                                  if (inventoryAsync.hasValue) {
+                                    final inventoryList =
+                                        inventoryAsync.asData?.value ?? [];
+                                    // Find stock for this product in real-time
+                                    for (final item in inventoryList) {
+                                      if (item.product.id == row.product.id) {
+                                        stock += item.inventory.availableStock;
+                                      }
+                                    }
+                                  }
+
+                                  return _QuickCard(
+                                    item: row,
+                                    busy: busy,
+                                    cartCount: cartCount,
+                                    stock: stock,
+                                    onTap: () => _onTapProduct(row),
+                                  );
+                                },
+                              );
+                            },
+                          )
+                        : ListView.builder(
+                            controller: _scrollCtrl,
+                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                            itemCount: _products.length + (_loading ? 1 : 0),
+                            itemBuilder: (context, index) {
+                              if (index >= _products.length) {
+                                return const Padding(
+                                  padding: EdgeInsets.all(16),
+                                  child: Center(
+                                      child: CircularProgressIndicator()),
+                                );
+                              }
+                              final row = _products[index];
+                              final busy =
+                                  _addingProductIds.contains(row.product.id);
+
+                              // Count this product in the cart
+                              var cartCount = 0.0;
+                              for (final item in rows) {
+                                if (item.product.id == row.product.id) {
+                                  cartCount = item.item.quantity;
+                                  break;
+                                }
+                              }
+
+                              // Watch stock in real-time from inventory provider
+                              return Consumer(
+                                builder: (context, localRef, _) {
+                                  final inventoryAsync =
+                                      localRef.watch(inventoryProvider);
+                                  double stock = 0.0;
+
+                                  if (inventoryAsync.hasValue) {
+                                    final inventoryList =
+                                        inventoryAsync.asData?.value ?? [];
+                                    // Find stock for this product in real-time
+                                    for (final item in inventoryList) {
+                                      if (item.product.id == row.product.id) {
+                                        stock += item.inventory.availableStock;
+                                      }
+                                    }
+                                  }
+
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 8),
+                                    child: _QuickListItem(
+                                      item: row,
+                                      busy: busy,
+                                      cartCount: cartCount,
+                                      stock: stock,
+                                      onTap: () => _onTapProduct(row),
+                                    ),
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                  ),
+                  SafeArea(
+                    top: false,
+                    child: Container(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surface,
+                        border: const Border(
+                            top: BorderSide(color: Color(0xFFE5E5E5))),
                       ),
-                      const SizedBox(width: 8),
-                      for (final c in carts)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: c.id == selectedCartId
-                              ? Row(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (_isCartUpdating) ...[
+                            Row(
+                              children: const [
+                                SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Updating cart...',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    ChoiceChip(
-                                      selected: true,
-                                      label: Text(c.name),
-                                      onSelected: (_) => ref
-                                          .read(selectedCartIdProvider.notifier)
-                                          .state = c.id,
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            selected == null
+                                                ? 'Select or create cart'
+                                                : 'Cart: ${selected.name}',
+                                            style: const TextStyle(
+                                                fontWeight: FontWeight.w600),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        if (selected != null)
+                                          Tooltip(
+                                            message: 'Edit cart',
+                                            child: IconButton(
+                                              padding: EdgeInsets.zero,
+                                              constraints: const BoxConstraints(
+                                                  minWidth: 32, minHeight: 32),
+                                              icon: const Icon(Icons.edit,
+                                                  size: 16),
+                                              onPressed: () =>
+                                                  _editCart(selected!),
+                                            ),
+                                          ),
+                                      ],
                                     ),
-                                    const SizedBox(width: 4),
-                                    InkWell(
-                                      borderRadius: BorderRadius.circular(12),
-                                      onTap: () async {
+                                    Text(
+                                      'Qty: ${qty.toStringAsFixed(qty % 1 == 0 ? 0 : 1)}  ·  Total: ₹${total.toStringAsFixed(2)}',
+                                      style: const TextStyle(
+                                          fontSize: 12, color: Colors.grey),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              FilledButton.icon(
+                                onPressed: selectedCartId == null ||
+                                        rows.isEmpty
+                                    ? null
+                                    : () => _showCartItemsPopup(selectedCartId),
+                                icon: const Icon(
+                                    Icons.shopping_cart_checkout_rounded),
+                                label: const Text('Checkout'),
+                              ),
+                              const SizedBox(width: 8),
+                              OutlinedButton.icon(
+                                onPressed:
+                                    selectedCartId == null || rows.isEmpty
+                                        ? null
+                                        : () => _printCartItems(rows),
+                                icon: const Icon(Icons.print_rounded),
+                                label: const Text('Print'),
+                              ),
+                              const SizedBox(width: 8),
+                              OutlinedButton.icon(
+                                onPressed: selectedCartId == null
+                                    ? null
+                                    : () async {
                                         final confirm = await showDialog<bool>(
                                           context: context,
                                           builder: (ctx) => AlertDialog(
-                                            title: const Text('Delete Cart?'),
+                                            title: const Text('Clear Cart?'),
                                             content: Text(
-                                                'Delete "${c.name}" and all items?'),
+                                                'Remove all items from "${selected?.name}"?'),
                                             actions: [
                                               TextButton(
                                                 onPressed: () =>
@@ -1760,283 +2089,46 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
                                               FilledButton(
                                                 onPressed: () =>
                                                     Navigator.pop(ctx, true),
-                                                child: const Text('Delete'),
+                                                child: const Text('Clear'),
                                               ),
                                             ],
                                           ),
                                         );
-                                        if (confirm == true && mounted) {
-                                          await ref
+                                        if (confirm == true &&
+                                            mounted &&
+                                            selectedCartId != null) {
+                                          final rows = await ref
                                               .read(salesRepositoryProvider)
-                                              .deleteCart(c.id);
-                                          ref
-                                              .read(selectedCartIdProvider
-                                                  .notifier)
-                                              .state = null;
+                                              .watchCartItems(selectedCartId)
+                                              .first;
+                                          for (final item in rows) {
+                                            await ref
+                                                .read(salesRepositoryProvider)
+                                                .removeItem(item.item.id);
+                                          }
                                         }
                                       },
-                                      child: Container(
-                                        padding: const EdgeInsets.all(6),
-                                        decoration: BoxDecoration(
-                                          color: Colors.red.shade600,
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: const Icon(
-                                          Icons.close,
-                                          size: 14,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                )
-                              : ChoiceChip(
-                                  selected: false,
-                                  label: Text(c.name),
-                                  onSelected: (_) => ref
-                                      .read(selectedCartIdProvider.notifier)
-                                      .state = c.id,
-                                ),
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 10),
-              ],
-            ),
-          ),
-          Expanded(
-            child: _isGridView
-                ? GridView.builder(
-                    controller: _scrollCtrl,
-                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                    gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                      maxCrossAxisExtent: 170,
-                      childAspectRatio: 1.0,
-                      crossAxisSpacing: 8,
-                      mainAxisSpacing: 8,
+                                icon: const Icon(Icons.delete_outline_rounded),
+                                label: const Text('Clear'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                    itemCount: _products.length + (_loading ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      if (index >= _products.length) {
-                        return const Card(
-                          child: Center(child: CircularProgressIndicator()),
-                        );
-                      }
-                      final row = _products[index];
-                      final busy = _addingProductIds.contains(row.product.id);
-
-                      // Count this product in the cart
-                      var cartCount = 0.0;
-                      for (final item in rows) {
-                        if (item.product.id == row.product.id) {
-                          cartCount = item.item.quantity;
-                          break;
-                        }
-                      }
-
-                      // Watch stock in real-time from inventory provider
-                      return Consumer(
-                        builder: (context, localRef, _) {
-                          final inventoryAsync = localRef.watch(inventoryProvider);
-                          double stock = 0.0;
-
-                          if (inventoryAsync.hasValue) {
-                            final inventoryList = inventoryAsync.asData?.value ?? [];
-                            // Find stock for this product in real-time
-                            for (final item in inventoryList) {
-                              if (item.product.id == row.product.id) {
-                                stock += item.inventory.availableStock;
-                              }
-                            }
-                          }
-
-                          return _QuickCard(
-                            item: row,
-                            busy: busy,
-                            cartCount: cartCount,
-                            stock: stock,
-                            onTap: () => _onTapProduct(row),
-                          );
-                        },
-                      );
-                    },
-                  )
-                : ListView.builder(
-                    controller: _scrollCtrl,
-                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                    itemCount: _products.length + (_loading ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      if (index >= _products.length) {
-                        return const Padding(
-                          padding: EdgeInsets.all(16),
-                          child: Center(child: CircularProgressIndicator()),
-                        );
-                      }
-                      final row = _products[index];
-                      final busy = _addingProductIds.contains(row.product.id);
-
-                      // Count this product in the cart
-                      var cartCount = 0.0;
-                      for (final item in rows) {
-                        if (item.product.id == row.product.id) {
-                          cartCount = item.item.quantity;
-                          break;
-                        }
-                      }
-
-                      // Watch stock in real-time from inventory provider
-                      return Consumer(
-                        builder: (context, localRef, _) {
-                          final inventoryAsync = localRef.watch(inventoryProvider);
-                          double stock = 0.0;
-
-                          if (inventoryAsync.hasValue) {
-                            final inventoryList = inventoryAsync.asData?.value ?? [];
-                            // Find stock for this product in real-time
-                            for (final item in inventoryList) {
-                              if (item.product.id == row.product.id) {
-                                stock += item.inventory.availableStock;
-                              }
-                            }
-                          }
-
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: _QuickListItem(
-                              item: row,
-                              busy: busy,
-                              cartCount: cartCount,
-                              stock: stock,
-                              onTap: () => _onTapProduct(row),
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  ),
-          ),
-          SafeArea(
-            top: false,
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface,
-                border: const Border(top: BorderSide(color: Color(0xFFE5E5E5))),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    selected == null
-                                        ? 'Select or create cart'
-                                        : 'Cart: ${selected.name}',
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.w600),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                if (selected != null)
-                                  Tooltip(
-                                    message: 'Edit cart',
-                                    child: IconButton(
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(
-                                          minWidth: 32, minHeight: 32),
-                                      icon: const Icon(Icons.edit, size: 16),
-                                      onPressed: () => _editCart(selected!),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            Text(
-                              'Qty: ${qty.toStringAsFixed(qty % 1 == 0 ? 0 : 1)}  ·  Total: ₹${total.toStringAsFixed(2)}',
-                              style: const TextStyle(
-                                  fontSize: 12, color: Colors.grey),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      FilledButton.icon(
-                        onPressed: selectedCartId == null || rows.isEmpty
-                            ? null
-                            : () => _showCartItemsPopup(selectedCartId),
-                        icon: const Icon(Icons.shopping_cart_checkout_rounded),
-                        label: const Text('Checkout'),
-                      ),
-                      const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        onPressed: selectedCartId == null || rows.isEmpty
-                            ? null
-                            : () => _printCartItems(rows),
-                        icon: const Icon(Icons.print_rounded),
-                        label: const Text('Print'),
-                      ),
-                      const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        onPressed: selectedCartId == null
-                            ? null
-                            : () async {
-                                final confirm = await showDialog<bool>(
-                                  context: context,
-                                  builder: (ctx) => AlertDialog(
-                                    title: const Text('Clear Cart?'),
-                                    content: Text(
-                                        'Remove all items from "${selected?.name}"?'),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () =>
-                                            Navigator.pop(ctx, false),
-                                        child: const Text('Cancel'),
-                                      ),
-                                      FilledButton(
-                                        onPressed: () =>
-                                            Navigator.pop(ctx, true),
-                                        child: const Text('Clear'),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                                if (confirm == true &&
-                                    mounted &&
-                                    selectedCartId != null) {
-                                  final rows = await ref
-                                      .read(salesRepositoryProvider)
-                                      .watchCartItems(selectedCartId)
-                                      .first;
-                                  for (final item in rows) {
-                                    await ref
-                                        .read(salesRepositoryProvider)
-                                        .removeItem(item.item.id);
-                                  }
-                                }
-                              },
-                        icon: const Icon(Icons.delete_outline_rounded),
-                        label: const Text('Clear'),
-                      ),
-                    ],
                   ),
                 ],
               ),
             ),
-          ),
-        ],
+            if (_isCartUpdating)
+              const Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: LinearProgressIndicator(minHeight: 2),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -2230,7 +2322,8 @@ class _QuickListItem extends StatelessWidget {
                       children: [
                         Text(
                           '₹${item.product.sellingPrice.toStringAsFixed(2)}',
-                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                          style:
+                              const TextStyle(fontSize: 12, color: Colors.grey),
                         ),
                         const Spacer(),
                         Container(
@@ -2296,12 +2389,12 @@ class _QuickListItem extends StatelessWidget {
 class _QuickProductItem {
   const _QuickProductItem({
     required this.product,
-    required this.showInQuickCheckout,
+    required this.hideFromQuickCheckout,
     required this.emoji,
   });
 
   final Product product;
-  final bool showInQuickCheckout;
+  final bool hideFromQuickCheckout;
   final String emoji;
 
   factory _QuickProductItem.fromDoc(
@@ -2309,7 +2402,7 @@ class _QuickProductItem {
     final data = doc.data();
     return _QuickProductItem(
       product: productFromDoc(doc),
-      showInQuickCheckout: data['showInQuickCheckout'] == true,
+      hideFromQuickCheckout: data['hideFromQuickCheckout'] == true,
       emoji: (data['quickCheckoutEmoji'] as String?)?.trim() ?? '',
     );
   }

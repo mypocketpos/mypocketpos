@@ -57,8 +57,9 @@ class ProductRepositoryImpl implements ProductRepository {
     required double taxPercent,
     String unit = 'piece',
     double openingStock = 0,
-    bool showInQuickCheckout = false,
+    bool showInQuickCheckout = true,
     String? quickCheckoutEmoji,
+    DateTime? expiryDate,
   }) async {
     final id = await _db.into(_db.products).insert(
           ProductsCompanion.insert(
@@ -121,8 +122,9 @@ class ProductRepositoryImpl implements ProductRepository {
     required double purchasePrice,
     required double taxPercent,
     String unit = 'piece',
-    bool showInQuickCheckout = false,
+    bool showInQuickCheckout = true,
     String? quickCheckoutEmoji,
+    DateTime? expiryDate,
   }) {
     return (_db.update(_db.products)..where((p) => p.id.equals(id))).write(
       ProductsCompanion(

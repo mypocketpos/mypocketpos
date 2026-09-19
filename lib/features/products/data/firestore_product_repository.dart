@@ -81,8 +81,9 @@ class FirestoreProductRepository implements ProductRepository {
     required double taxPercent,
     String unit = 'piece',
     double openingStock = 0,
-    bool showInQuickCheckout = false,
+    bool showInQuickCheckout = true,
     String? quickCheckoutEmoji,
+    DateTime? expiryDate,
   }) async {
     final id = newIntId();
 
@@ -117,6 +118,7 @@ class FirestoreProductRepository implements ProductRepository {
           unit: unit,
           showInQuickCheckout: showInQuickCheckout,
           quickCheckoutEmoji: quickCheckoutEmoji,
+          expiryDate: expiryDate,
         )..['createdAt'] = FieldValue.serverTimestamp());
 
     // An opening inventory row per warehouse so the product shows up in the
@@ -207,8 +209,9 @@ class FirestoreProductRepository implements ProductRepository {
     required double purchasePrice,
     required double taxPercent,
     String unit = 'piece',
-    bool showInQuickCheckout = false,
+    bool showInQuickCheckout = true,
     String? quickCheckoutEmoji,
+    DateTime? expiryDate,
   }) {
     return _col.doc('$id').set(
         _data(
@@ -222,6 +225,7 @@ class FirestoreProductRepository implements ProductRepository {
           unit: unit,
           showInQuickCheckout: showInQuickCheckout,
           quickCheckoutEmoji: quickCheckoutEmoji,
+          expiryDate: expiryDate,
         ),
         SetOptions(merge: true));
   }
@@ -246,6 +250,7 @@ class FirestoreProductRepository implements ProductRepository {
     required String unit,
     required bool showInQuickCheckout,
     String? quickCheckoutEmoji,
+    DateTime? expiryDate,
   }) {
     final emoji = quickCheckoutEmoji?.trim();
     return {
@@ -259,6 +264,12 @@ class FirestoreProductRepository implements ProductRepository {
       'taxPercent': taxPercent,
       'unit': unit,
       'showInQuickCheckout': showInQuickCheckout,
+      'hideFromQuickCheckout': !showInQuickCheckout,
+      'expiryDate': expiryDate == null
+          ? null
+          : Timestamp.fromDate(
+              DateTime(expiryDate.year, expiryDate.month, expiryDate.day),
+            ),
       'quickCheckoutEmoji': (emoji == null || emoji.isEmpty) ? null : emoji,
       'isActive': true,
     };
