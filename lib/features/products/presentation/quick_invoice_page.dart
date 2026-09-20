@@ -491,23 +491,48 @@ class _QuickInvoicePageState extends ConsumerState<QuickInvoicePage> {
   }
 
   Widget _buildCustomerPhoneAutocomplete(WidgetRef ref) {
-    return Autocomplete<Customer>(
+    return Autocomplete<({String name, String phone, String address})>(
       initialValue: TextEditingValue(text: _customerPhoneCtrl.text),
-      displayStringForOption: (customer) => customer.mobile ?? '',
+      displayStringForOption: (customer) => customer.phone,
       optionsBuilder: (textEditingValue) async {
         final query = textEditingValue.text.trim();
         if (query.isEmpty || query.length > 4) {
           return const [];
         }
-        final repo = ref.read(customerRepositoryProvider);
-        final results =
-            await repo.searchByNameOrMobile(query);
-        return results;
+        final storeId = ref.read(activeStoreIdProvider);
+        if (storeId == null || storeId.isEmpty) return const [];
+
+        try {
+          final snapshot = await storeCollection(
+                  ref.read(firestoreProvider), storeId, 'quick_invoices')
+              .where('customerPhone', isGreaterThanOrEqualTo: query)
+              .where('customerPhone', isLessThan: '${query}z')
+              .orderBy('customerPhone')
+              .limit(10)
+              .get();
+
+          final seen = <String>{};
+          final results = <({String name, String phone, String address})>[];
+
+          for (final doc in snapshot.docs) {
+            final phone = doc.get('customerPhone') as String? ?? '';
+            if (phone.isNotEmpty && seen.add(phone)) {
+              results.add((
+                name: doc.get('customerName') as String? ?? '',
+                phone: phone,
+                address: doc.get('customerAddress') as String? ?? '',
+              ));
+            }
+          }
+          return results;
+        } catch (e) {
+          return const [];
+        }
       },
       onSelected: (customer) {
-        _customerPhoneCtrl.text = customer.mobile ?? '';
+        _customerPhoneCtrl.text = customer.phone;
         _customerNameCtrl.text = customer.name;
-        _customerAddressCtrl.text = customer.address ?? '';
+        _customerAddressCtrl.text = customer.address;
         setState(() => _savedInvoiceId = null);
       },
       fieldViewBuilder: (context, textEditingController, focusNode, onSubmit) {
@@ -548,8 +573,8 @@ class _QuickInvoicePageState extends ConsumerState<QuickInvoicePage> {
                   final customer = options.elementAt(index);
                   return ListTile(
                     dense: true,
-                    title: Text(customer.name),
-                    subtitle: Text(customer.mobile ?? ''),
+                    title: Text(customer.name.isEmpty ? 'N/A' : customer.name),
+                    subtitle: Text(customer.phone),
                     onTap: () => onSelected(customer),
                   );
                 },
