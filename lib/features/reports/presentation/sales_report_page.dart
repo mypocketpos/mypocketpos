@@ -548,6 +548,8 @@ class SalesReportPage extends ConsumerWidget {
       for (final _ in items) FocusNode(),
     ];
 
+    var isDialogOpen = true;
+
     final response = await showDialog<_PartialReturnDialogResult>(
       context: context,
       builder: (ctx) {
@@ -570,7 +572,9 @@ class SalesReportPage extends ConsumerWidget {
                                     items[i].remainingQty % 1 == 0 ? 0 : 2);
                           }
                           await Future.microtask(() {
-                            setState(() {});
+                            if (isDialogOpen) {
+                              setState(() {});
+                            }
                           });
                         },
                         icon: const Icon(Icons.select_all_rounded, size: 16),
@@ -765,7 +769,10 @@ class SalesReportPage extends ConsumerWidget {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(ctx),
+                  onPressed: () {
+                    isDialogOpen = false;
+                    Navigator.pop(ctx);
+                  },
                   child: const Text('Cancel'),
                 ),
                 FilledButton(
@@ -812,6 +819,7 @@ class SalesReportPage extends ConsumerWidget {
                       return;
                     }
 
+                    isDialogOpen = false;
                     Navigator.pop(
                       ctx,
                       _PartialReturnDialogResult(
