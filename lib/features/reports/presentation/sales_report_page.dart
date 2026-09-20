@@ -838,13 +838,16 @@ class SalesReportPage extends ConsumerWidget {
       },
     );
 
-    reasonCtrl.dispose();
-    for (final c in qtyCtrls) {
-      c.dispose();
-    }
-    for (final n in qtyFocusNodes) {
-      n.dispose();
-    }
+    // Defer disposal to ensure all pending callbacks complete
+    Future.microtask(() {
+      reasonCtrl.dispose();
+      for (final c in qtyCtrls) {
+        c.dispose();
+      }
+      for (final n in qtyFocusNodes) {
+        n.dispose();
+      }
+    });
     return response;
   }
 
