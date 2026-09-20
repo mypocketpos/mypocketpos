@@ -922,11 +922,11 @@ class SalesReportPage extends ConsumerWidget {
 
       await _printPdfInvoice(
         invoiceNo: row.invoiceNo,
+        invoiceDate: row.soldAt,
         branding: branding,
         shopName: shopName,
-        items: printableItems,
+        saleItems: saleItems,
         grandTotal: row.grandTotal,
-        refundEntries: await _loadRefundEntries(ref, row.saleId),
       );
       ref.read(_salesLastPrintModeProvider.notifier).state = 'PDF fallback';
       ref.read(_salesShowLastPrintBannerProvider.notifier).state = true;
@@ -939,27 +939,39 @@ class SalesReportPage extends ConsumerWidget {
 
   Future<void> _printPdfInvoice({
     required String invoiceNo,
+    required DateTime invoiceDate,
     required InvoiceBranding branding,
     required String shopName,
-    required List<
-            ({
-              String name,
-              double qty,
-              double discountAmount,
-              double netAmount
-            })>
-        items,
+    required List<SaleItem> saleItems,
     required double grandTotal,
-    List<({String method, double amount, DateTime paidAt, String? referenceNo})>
-        refundEntries = const [],
   }) async {
-    final bytes = await ReceiptPdfService().generateSimpleReceipt(
+    final subTotal = saleItems.fold<double>(
+        0, (sum, item) => sum + (item.unitPrice * item.quantity));
+    final taxTotal = saleItems.fold<double>(0,
+        (sum, item) => sum + ((item.unitPrice * item.quantity * item.taxPercent) / 100));
+
+    final printableItems = saleItems
+        .map(
+          (item) => (
+            description: item.id.toString(),
+            unitPrice: item.unitPrice,
+            qty: item.quantity,
+            lineTotal: item.lineTotal,
+          ),
+        )
+        .toList(growable: false);
+
+    final bytes = await ReceiptPdfService().generateClassicInvoice(
       shopName: shopName,
       invoiceNo: invoiceNo,
+      invoiceDate: invoiceDate,
+      customerName: '',
+      customerAddress: '',
       branding: branding,
-      items: items,
-      grandTotal: grandTotal,
-      refundEntries: refundEntries,
+      items: printableItems,
+      subTotal: subTotal,
+      total: grandTotal,
+      taxTotal: taxTotal > 0 ? taxTotal : null,
     );
 
     final pdfBytes = Uint8List.fromList(bytes);
