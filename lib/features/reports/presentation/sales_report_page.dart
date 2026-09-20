@@ -562,14 +562,16 @@ class SalesReportPage extends ConsumerWidget {
                     Align(
                       alignment: Alignment.centerRight,
                       child: TextButton.icon(
-                        onPressed: () {
+                        onPressed: () async {
                           for (var i = 0; i < qtyCtrls.length; i++) {
                             qtyCtrls[i].text = items[i]
                                 .remainingQty
                                 .toStringAsFixed(
                                     items[i].remainingQty % 1 == 0 ? 0 : 2);
                           }
-                          setState(() {});
+                          await Future.microtask(() {
+                            setState(() {});
+                          });
                         },
                         icon: const Icon(Icons.select_all_rounded, size: 16),
                         label: const Text('Return all remaining'),
