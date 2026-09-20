@@ -192,6 +192,7 @@ class _QuickInvoicePageState extends ConsumerState<QuickInvoicePage> {
                         descriptionCtrl.text = product.name;
                         priceCtrl.text =
                             product.sellingPrice.toStringAsFixed(2);
+                        taxCtrl.text = product.taxPercent.toStringAsFixed(2);
                         setLocal(() {});
                       },
                       fieldViewBuilder: (context, textEditingController,
@@ -303,6 +304,7 @@ class _QuickInvoicePageState extends ConsumerState<QuickInvoicePage> {
                           const TextInputType.numberWithOptions(decimal: true),
                       decoration: const InputDecoration(
                         labelText: 'GST %',
+                        hintText: 'Auto-filled from product. Clear to edit.',
                         border: OutlineInputBorder(),
                         isDense: true,
                       ),
