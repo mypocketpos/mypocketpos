@@ -483,28 +483,35 @@ class _CustomerInvoiceDetailPageState extends ConsumerState<CustomerInvoiceDetai
                               ],
                             ),
                             const SizedBox(height: 10),
-                            ...summary.entries.map(
-                              (entry) => Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 4),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        '${entry.method.toUpperCase()} • ${DateFormat('dd MMM yyyy hh:mm a').format(entry.paidAt)}'
-                                        '${entry.referenceNo == null || entry.referenceNo!.isEmpty ? '' : ' • ${entry.referenceNo}'}',
-                                        style: const TextStyle(fontSize: 12),
+                            SingleChildScrollView(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  ...summary.entries.map(
+                                    (entry) => Padding(
+                                      padding:
+                                          const EdgeInsets.symmetric(vertical: 4),
+                                      child: Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              '${entry.method.toUpperCase()} • ${DateFormat('dd MMM yyyy hh:mm a').format(entry.paidAt)}'
+                                              '${entry.referenceNo == null || entry.referenceNo!.isEmpty ? '' : ' • ${entry.referenceNo}'}',
+                                              style: const TextStyle(fontSize: 12),
+                                            ),
+                                          ),
+                                          Text(
+                                            '-${formatInr(entry.amount)}',
+                                            style: const TextStyle(
+                                              color: Colors.orange,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
-                                    Text(
-                                      '-${formatInr(entry.amount)}',
-                                      style: const TextStyle(
-                                        color: Colors.orange,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                                  ),
+                                ],
                               ),
                             ),
                             const Divider(height: 16),
