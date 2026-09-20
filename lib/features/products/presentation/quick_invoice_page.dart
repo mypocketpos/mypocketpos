@@ -78,12 +78,9 @@ class _QuickInvoicePageState extends ConsumerState<QuickInvoicePage> {
         _invoiceNo = data['invoiceNo'] as String? ?? _invoiceNo;
         _invoiceDate =
             (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now();
-        _customerNameCtrl.text =
-            data['customerName'] as String? ?? '';
-        _customerPhoneCtrl.text =
-            data['customerPhone'] as String? ?? '';
-        _customerAddressCtrl.text =
-            data['customerAddress'] as String? ?? '';
+        _customerNameCtrl.text = data['customerName'] as String? ?? '';
+        _customerPhoneCtrl.text = data['customerPhone'] as String? ?? '';
+        _customerAddressCtrl.text = data['customerAddress'] as String? ?? '';
         _noteCtrl.text = data['note'] as String? ?? '';
 
         _lines.clear();
@@ -302,18 +299,16 @@ class _QuickInvoicePageState extends ConsumerState<QuickInvoicePage> {
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: taxCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
                       decoration: const InputDecoration(
                         labelText: 'GST %',
                         border: OutlineInputBorder(),
                         isDense: true,
                       ),
                       validator: (value) {
-                        final parsed =
-                            double.tryParse(value?.trim() ?? '');
-                        if (parsed == null || parsed < 0)
-                          return 'Invalid';
+                        final parsed = double.tryParse(value?.trim() ?? '');
+                        if (parsed == null || parsed < 0) return 'Invalid';
                         return null;
                       },
                     ),
@@ -551,309 +546,355 @@ class _QuickInvoicePageState extends ConsumerState<QuickInvoicePage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Wrap(
-            spacing: 16,
-            runSpacing: 16,
-            crossAxisAlignment: WrapCrossAlignment.start,
-            children: [
-              SizedBox(
-                width: 360,
-                child: Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Invoice Details',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.w600),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isWide = constraints.maxWidth > 900;
+
+              final formCard = Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Invoice Details',
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _customerNameCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Customer Name',
+                          border: OutlineInputBorder(),
+                          isDense: true,
                         ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _customerNameCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Customer Name',
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                          onChanged: (_) =>
-                              setState(() => _savedInvoiceId = null),
+                        onChanged: (_) =>
+                            setState(() => _savedInvoiceId = null),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _customerPhoneCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Customer Phone',
+                          border: OutlineInputBorder(),
+                          isDense: true,
                         ),
-                        const SizedBox(height: 10),
-                        TextField(
-                          controller: _customerPhoneCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Customer Phone',
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                          onChanged: (_) =>
-                              setState(() => _savedInvoiceId = null),
+                        onChanged: (_) =>
+                            setState(() => _savedInvoiceId = null),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _customerAddressCtrl,
+                        maxLines: 3,
+                        decoration: const InputDecoration(
+                          labelText: 'Customer Address',
+                          border: OutlineInputBorder(),
+                          isDense: true,
                         ),
-                        const SizedBox(height: 10),
-                        TextField(
-                          controller: _customerAddressCtrl,
-                          maxLines: 3,
-                          decoration: const InputDecoration(
-                            labelText: 'Customer Address',
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                          onChanged: (_) =>
-                              setState(() => _savedInvoiceId = null),
+                        onChanged: (_) =>
+                            setState(() => _savedInvoiceId = null),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _noteCtrl,
+                        maxLines: 2,
+                        decoration: const InputDecoration(
+                          labelText: 'Footer Note',
+                          hintText: 'Optional thank-you or payment note',
+                          border: OutlineInputBorder(),
+                          isDense: true,
                         ),
-                        const SizedBox(height: 10),
-                        TextField(
-                          controller: _noteCtrl,
-                          maxLines: 2,
-                          decoration: const InputDecoration(
-                            labelText: 'Footer Note',
-                            hintText: 'Optional thank-you or payment note',
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                          onChanged: (_) =>
-                              setState(() => _savedInvoiceId = null),
+                        onChanged: (_) =>
+                            setState(() => _savedInvoiceId = null),
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFE0E0E0)),
                         ),
-                        const SizedBox(height: 12),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0xFFE0E0E0)),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Invoice No: $_invoiceNo'),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Date: ${DateFormat('dd/MM/yyyy').format(_invoiceDate)}',
-                              ),
-                              if (_savedInvoiceId != null) ...[
-                                const SizedBox(height: 4),
-                                const Text(
-                                  'Status: Saved',
-                                  style: TextStyle(fontWeight: FontWeight.w600),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 900),
-                child: Card(
-                  color: Colors.white,
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
+                        child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    shopName,
-                                    style: const TextStyle(
-                                      fontSize: 28,
-                                      fontWeight: FontWeight.w700,
-                                      color: Colors.black,
-                                    ),
-                                  ),
-                                  if (branding.address.isNotEmpty)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 8),
-                                      child: Text(
-                                        branding.address,
-                                        style: const TextStyle(
-                                            color: Colors.black87),
-                                      ),
-                                    ),
-                                  if (branding.phone.isNotEmpty ||
-                                      branding.email.isNotEmpty)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 6),
-                                      child: Text(
-                                        [
-                                          if (branding.phone.isNotEmpty)
-                                            branding.phone,
-                                          if (branding.email.isNotEmpty)
-                                            branding.email,
-                                        ].join(' | '),
-                                        style: const TextStyle(
-                                            color: Colors.black87),
-                                      ),
-                                    ),
-                                  if (branding.gstin.isNotEmpty)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 6),
-                                      child: Text(
-                                        'GSTIN: ${branding.gstin}',
-                                        style: const TextStyle(
-                                            color: Colors.black87),
-                                      ),
-                                    ),
-                                ],
+                            Text('Invoice No: $_invoiceNo'),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Date: ${DateFormat('dd/MM/yyyy').format(_invoiceDate)}',
+                            ),
+                            if (_savedInvoiceId != null) ...[
+                              const SizedBox(height: 4),
+                              const Text(
+                                'Status: Saved',
+                                style: TextStyle(fontWeight: FontWeight.w600),
                               ),
-                            ),
-                            const SizedBox(width: 24),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                const Text(
-                                  'INVOICE',
-                                  style: TextStyle(
-                                    fontSize: 36,
-                                    fontWeight: FontWeight.w500,
-                                    letterSpacing: 1.2,
-                                    color: Colors.black,
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                _MetaLine(
-                                    label: 'Date',
-                                    value: DateFormat('dd/MM/yyyy')
-                                        .format(_invoiceDate)),
-                                _MetaLine(
-                                    label: 'Invoice No', value: _invoiceNo),
-                                _MetaLine(
-                                  label: 'Invoice To',
-                                  value: _customerNameCtrl.text.trim().isEmpty
-                                      ? '-'
-                                      : _customerNameCtrl.text.trim(),
-                                ),
-                              ],
-                            ),
+                            ],
                           ],
                         ),
-                        const SizedBox(height: 24),
-                        Row(
-                          children: [
-                            FilledButton.icon(
-                              onPressed: _saving || _printing
-                                  ? null
-                                  : () => _showAddProductDialog(),
-                              icon: const Icon(Icons.add),
-                              label: const Text('Add Product'),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        Table(
-                          columnWidths: const <int, TableColumnWidth>{
-                            0: FlexColumnWidth(4.5),
-                            1: FlexColumnWidth(1.6),
-                            2: FlexColumnWidth(1.6),
-                            3: FlexColumnWidth(1.8),
-                            4: FixedColumnWidth(96),
-                          },
-                          border: const TableBorder(
-                            horizontalInside:
-                                BorderSide(color: Color(0xFFE0E0E0)),
-                            bottom: BorderSide(color: Color(0xFFCCCCCC)),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+
+              final previewCard = Card(
+                color: Colors.white,
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildInvoiceHeader(isWide, shopName, branding),
+                      const SizedBox(height: 24),
+                      Row(
+                        children: [
+                          FilledButton.icon(
+                            onPressed: _saving || _printing
+                                ? null
+                                : () => _showAddProductDialog(),
+                            icon: const Icon(Icons.add),
+                            label: const Text('Add Product'),
                           ),
-                          children: [
-                            const TableRow(
-                              decoration: BoxDecoration(
-                                border: Border(
-                                  bottom: BorderSide(color: Color(0xFFCCCCCC)),
-                                ),
-                              ),
-                              children: [
-                                _HeaderCell('Description'),
-                                _HeaderCell('Price', alignRight: true),
-                                _HeaderCell('Qty', alignRight: true),
-                                _HeaderCell('GST %', alignRight: true),
-                                _HeaderCell('Total', alignRight: true),
-                                SizedBox(),
-                              ],
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      // FIX: Horizontal scroll to prevent column squishing
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(minWidth: 650),
+                          child: Table(
+                            columnWidths: const <int, TableColumnWidth>{
+                              0: FlexColumnWidth(3.5),
+                              1: FlexColumnWidth(1.2),
+                              2: FlexColumnWidth(1.0),
+                              3: FlexColumnWidth(1.2),
+                              4: FlexColumnWidth(1.5),
+                              5: FixedColumnWidth(80),
+                            },
+                            border: const TableBorder(
+                              horizontalInside:
+                                  BorderSide(color: Color(0xFFE0E0E0)),
+                              bottom: BorderSide(color: Color(0xFFCCCCCC)),
                             ),
-                            if (_lines.isEmpty)
+                            children: [
                               const TableRow(
+                                decoration: BoxDecoration(
+                                  border: Border(
+                                    bottom:
+                                        BorderSide(color: Color(0xFFCCCCCC)),
+                                  ),
+                                ),
                                 children: [
-                                  _EmptyCell('No items added yet'),
-                                  _EmptyCell(''),
-                                  _EmptyCell(''),
-                                  _EmptyCell(''),
-                                  _EmptyCell(''),
+                                  _HeaderCell('Description'),
+                                  _HeaderCell('Price', alignRight: true),
+                                  _HeaderCell('Qty', alignRight: true),
+                                  _HeaderCell('GST %', alignRight: true),
+                                  _HeaderCell('Total', alignRight: true),
                                   SizedBox(),
                                 ],
                               ),
-                            for (var i = 0; i < _lines.length; i++)
-                              _buildLineRow(i, _lines[i]),
-                          ],
+                              if (_lines.isEmpty)
+                                const TableRow(
+                                  children: [
+                                    _EmptyCell('No items added yet'),
+                                    _EmptyCell(''),
+                                    _EmptyCell(''),
+                                    _EmptyCell(''),
+                                    _EmptyCell(''),
+                                    SizedBox(),
+                                  ],
+                                ),
+                              for (var i = 0; i < _lines.length; i++)
+                                _buildLineRow(i, _lines[i]),
+                            ],
+                          ),
                         ),
-                        const SizedBox(height: 20),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: SizedBox(
-                            width: 320,
-                            child: Column(
-                              children: [
-                                _TotalLine(
-                                    label: 'Sub-total', value: _subtotal),
-                                _TotalLine(
-                                    label: 'GST', value: _taxTotal),
-                                _TotalLine(
-                                    label: 'TOTAL',
-                                    value: _grandTotal,
-                                    bold: true),
-                              ],
+                      ),
+
+                      const SizedBox(height: 20),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: SizedBox(
+                          width: 320,
+                          child: Column(
+                            children: [
+                              _TotalLine(label: 'Sub-total', value: _subtotal),
+                              _TotalLine(label: 'GST', value: _taxTotal),
+                              _TotalLine(
+                                  label: 'TOTAL',
+                                  value: _grandTotal,
+                                  bold: true),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 40),
+                      const Center(
+                        child: Text(
+                          'Thank You!',
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Center(
+                        child: Text(
+                          [
+                            if (branding.phone.isNotEmpty) branding.phone,
+                            if (branding.email.isNotEmpty) branding.email,
+                          ].join(' | '),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.black87),
+                        ),
+                      ),
+                      if (_noteCtrl.text.trim().isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: Center(
+                            child: Text(
+                              _noteCtrl.text.trim(),
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: Colors.black87),
                             ),
                           ),
                         ),
-                        const SizedBox(height: 40),
-                        const Center(
-                          child: Text(
-                            'Thank You!',
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Center(
-                          child: Text(
-                            [
-                              if (branding.phone.isNotEmpty) branding.phone,
-                              if (branding.email.isNotEmpty) branding.email,
-                            ].join(' | '),
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(color: Colors.black87),
-                          ),
-                        ),
-                        if (_noteCtrl.text.trim().isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 12),
-                            child: Center(
-                              child: Text(
-                                _noteCtrl.text.trim(),
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(color: Colors.black87),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
+                    ],
                   ),
                 ),
-              ),
-            ],
+              );
+
+              // Responsive layout switch
+              if (isWide) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(width: 360, child: formCard),
+                    const SizedBox(width: 16),
+                    Expanded(child: previewCard),
+                  ],
+                );
+              } else {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    formCard,
+                    const SizedBox(height: 16),
+                    previewCard,
+                  ],
+                );
+              }
+            },
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildShopInfoBlock(InvoiceBranding branding, String shopName) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          shopName,
+          style: const TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w700,
+            color: Colors.black,
+          ),
+        ),
+        if (branding.address.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              branding.address,
+              style: const TextStyle(color: Colors.black87),
+            ),
+          ),
+        if (branding.phone.isNotEmpty || branding.email.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              [
+                if (branding.phone.isNotEmpty) branding.phone,
+                if (branding.email.isNotEmpty) branding.email,
+              ].join(' | '),
+              style: const TextStyle(color: Colors.black87),
+            ),
+          ),
+        if (branding.gstin.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              'GSTIN: ${branding.gstin}',
+              style: const TextStyle(color: Colors.black87),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildInvoiceMetaBlock(CrossAxisAlignment alignment) {
+    return Column(
+      crossAxisAlignment: alignment,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text(
+          'INVOICE',
+          style: TextStyle(
+            fontSize: 32,
+            fontWeight: FontWeight.w500,
+            letterSpacing: 1.2,
+            color: Colors.black,
+          ),
+        ),
+        const SizedBox(height: 12),
+        _MetaLine(
+            label: 'Date',
+            value: DateFormat('dd/MM/yyyy').format(_invoiceDate)),
+        _MetaLine(label: 'Invoice No', value: _invoiceNo),
+        _MetaLine(
+          label: 'Invoice To',
+          value: _customerNameCtrl.text.trim().isEmpty
+              ? '-'
+              : _customerNameCtrl.text.trim(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInvoiceHeader(
+    bool isWide,
+    String shopName,
+    InvoiceBranding branding,
+  ) {
+    if (isWide) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: _buildShopInfoBlock(branding, shopName)),
+          const SizedBox(width: 24),
+          _buildInvoiceMetaBlock(CrossAxisAlignment.end),
+        ],
+      );
+    }
+
+    // Mobile: two full-width horizontal sections stacked one above the other.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildShopInfoBlock(branding, shopName),
+        const SizedBox(height: 20),
+        const Divider(),
+        const SizedBox(height: 12),
+        _buildInvoiceMetaBlock(CrossAxisAlignment.start),
+      ],
     );
   }
 
@@ -936,6 +977,7 @@ class _MetaLine extends StatelessWidget {
       child: Text(
         '$label : $value',
         style: const TextStyle(fontSize: 14, color: Colors.black),
+        textAlign: TextAlign.right,
       ),
     );
   }

@@ -1,15 +1,18 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:printing/printing.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/di/providers.dart';
 import '../../../core/firestore/firestore_mappers.dart';
 import '../../../core/firestore/store_scope.dart';
 import '../../../core/models/invoice_branding.dart';
+import '../../../core/services/pdf_service.dart';
 import '../../barcode/presentation/barcode_scanner_page.dart';
 import '../../barcode/presentation/hid_scanner_listener.dart';
 import '../../store/presentation/store_auth_controller.dart';
@@ -622,207 +625,281 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
     }
 
     final summary = ref.read(cartSummaryProvider(rows));
+    final branding = ref.read(invoiceBrandingProvider).valueOrNull ??
+        const InvoiceBranding.defaults();
+    final shopName = branding.displayName.isNotEmpty
+        ? branding.displayName
+        : (ref.read(storeSessionProvider)?.storeName ?? 'Pocket POS');
     final now = DateTime.now();
+    bool _printing = false;
 
     if (!mounted) return;
     await showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Bill Preview'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Bill Header
-              Center(
-                child: Column(
+      builder: (ctx) => StatefulBuilder(
+        builder: (dialogCtx, setState) => AlertDialog(
+          title: const Text('Bill Preview'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Shop Branding Header
+                Center(
+                  child: Column(
+                    children: [
+                      Text(shopName,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 14)),
+                      if (branding.address.isNotEmpty)
+                        Text(branding.address,
+                            style: const TextStyle(fontSize: 9),
+                            textAlign: TextAlign.center),
+                      if (branding.phone.isNotEmpty || branding.email.isNotEmpty)
+                        Text(
+                          [
+                            if (branding.phone.isNotEmpty) branding.phone,
+                            if (branding.email.isNotEmpty) branding.email,
+                          ].join(' | '),
+                          style: const TextStyle(fontSize: 9),
+                          textAlign: TextAlign.center,
+                        ),
+                      const SizedBox(height: 4),
+                      const Text('Bill of Supply',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 12)),
+                      const SizedBox(height: 2),
+                      const Text('Cash', style: TextStyle(fontSize: 10)),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // Date and Invoice
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Bill of Supply',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 14)),
-                    const SizedBox(height: 4),
-                    const Text('Cash', style: TextStyle(fontSize: 11)),
+                    Text('Date: ${now.day}/${now.month}/${now.year}',
+                        style: const TextStyle(fontSize: 10)),
+                    Text('Invoice no: ${now.millisecondsSinceEpoch % 1000}',
+                        style: const TextStyle(fontSize: 10)),
                   ],
                 ),
-              ),
-              const SizedBox(height: 12),
+                Text('Time: ${now.hour}:${now.minute.toString().padLeft(2, '0')}',
+                    style: const TextStyle(fontSize: 10, color: Colors.grey)),
 
-              // Date and Invoice
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Date: ${now.day}/${now.month}/${now.year}',
-                      style: const TextStyle(fontSize: 10)),
-                  Text('Invoice no: ${now.millisecondsSinceEpoch % 1000}',
-                      style: const TextStyle(fontSize: 10)),
-                ],
-              ),
-              Text('Time: ${now.hour}:${now.minute.toString().padLeft(2, '0')}',
-                  style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                const SizedBox(height: 12),
+                const Divider(height: 1),
 
-              const SizedBox(height: 12),
-              const Divider(height: 1),
-
-              // Table Header
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      flex: 2,
-                      child: Text('Item Name',
-                          style: const TextStyle(
-                              fontSize: 10, fontWeight: FontWeight.w600)),
-                    ),
-                    Expanded(
-                      child: Text('Qty',
-                          style: const TextStyle(
-                              fontSize: 10, fontWeight: FontWeight.w600),
-                          textAlign: TextAlign.center),
-                    ),
-                    Expanded(
-                      child: Text('Price',
-                          style: const TextStyle(
-                              fontSize: 10, fontWeight: FontWeight.w600),
-                          textAlign: TextAlign.right),
-                    ),
-                    Expanded(
-                      child: Text('Amount',
-                          style: const TextStyle(
-                              fontSize: 10, fontWeight: FontWeight.w600),
-                          textAlign: TextAlign.right),
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-
-              // Items
-              ...rows.map((row) {
-                final lineTotal = row.product.sellingPrice * row.item.quantity;
-                final taxText = row.item.taxPercent > 0
-                    ? ' (${row.item.taxPercent.toStringAsFixed(0)}%)'
-                    : '';
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
+                // Table Header
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Row(
                     children: [
                       Expanded(
                         flex: 2,
-                        child: Text('${row.product.name}$taxText',
-                            style: const TextStyle(fontSize: 9),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis),
+                        child: Text('Item Name',
+                            style: const TextStyle(
+                                fontSize: 10, fontWeight: FontWeight.w600)),
                       ),
                       Expanded(
-                        child: Text(
-                            row.item.quantity.toStringAsFixed(
-                                row.item.quantity % 1 == 0 ? 0 : 1),
-                            style: const TextStyle(fontSize: 9),
+                        child: Text('Qty',
+                            style: const TextStyle(
+                                fontSize: 10, fontWeight: FontWeight.w600),
                             textAlign: TextAlign.center),
                       ),
                       Expanded(
-                        child: Text(
-                            '₹${row.product.sellingPrice.toStringAsFixed(2)}',
-                            style: const TextStyle(fontSize: 9),
+                        child: Text('Price',
+                            style: const TextStyle(
+                                fontSize: 10, fontWeight: FontWeight.w600),
                             textAlign: TextAlign.right),
                       ),
                       Expanded(
-                        child: Text('₹${lineTotal.toStringAsFixed(2)}',
-                            style: const TextStyle(fontSize: 9),
+                        child: Text('Amount',
+                            style: const TextStyle(
+                                fontSize: 10, fontWeight: FontWeight.w600),
                             textAlign: TextAlign.right),
                       ),
                     ],
                   ),
-                );
-              }),
+                ),
+                const Divider(height: 1),
 
-              const Divider(height: 1),
+                // Items
+                ...rows.map((row) {
+                  final lineTotal = row.product.sellingPrice * row.item.quantity;
+                  final taxText = row.item.taxPercent > 0
+                      ? ' (${row.item.taxPercent.toStringAsFixed(0)}%)'
+                      : '';
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          flex: 2,
+                          child: Text('${row.product.name}$taxText',
+                              style: const TextStyle(fontSize: 9),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis),
+                        ),
+                        Expanded(
+                          child: Text(
+                              row.item.quantity.toStringAsFixed(
+                                  row.item.quantity % 1 == 0 ? 0 : 1),
+                              style: const TextStyle(fontSize: 9),
+                              textAlign: TextAlign.center),
+                        ),
+                        Expanded(
+                          child: Text(
+                              '₹${row.product.sellingPrice.toStringAsFixed(2)}',
+                              style: const TextStyle(fontSize: 9),
+                              textAlign: TextAlign.right),
+                        ),
+                        Expanded(
+                          child: Text('₹${lineTotal.toStringAsFixed(2)}',
+                              style: const TextStyle(fontSize: 9),
+                              textAlign: TextAlign.right),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
 
-              // Totals
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Column(
-                  children: [
-                    // Bill discount percentage if applicable
-                    if (summary.discountTotal > 0) ...[
+                const Divider(height: 1),
+
+                // Totals
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Column(
+                    children: [
+                      // Bill discount percentage if applicable
+                      if (summary.discountTotal > 0) ...[
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Discount',
+                                style: TextStyle(
+                                    fontSize: 10, color: Colors.green)),
+                            Text(
+                                '-₹${summary.discountTotal.toStringAsFixed(2)}',
+                                style: const TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.green)),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                      ],
+                      // Subtotal (before discount)
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('Discount',
-                              style:
-                                  TextStyle(fontSize: 10, color: Colors.green)),
-                          Text('-₹${summary.discountTotal.toStringAsFixed(2)}',
+                          const Text('Subtotal',
+                              style: TextStyle(
+                                  fontSize: 10, color: Colors.grey)),
+                          Text('₹${(summary.subTotal.toStringAsFixed(2))}',
                               style: const TextStyle(
                                   fontSize: 10,
                                   fontWeight: FontWeight.w600,
-                                  color: Colors.green)),
+                                  color: Colors.grey)),
                         ],
                       ),
                       const SizedBox(height: 4),
+                      // Tax/GST
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('GST/Tax',
+                              style: TextStyle(
+                                  fontSize: 10, color: Colors.grey)),
+                          Text('₹${summary.taxTotal.toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.grey)),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      const Divider(height: 1),
+                      const SizedBox(height: 8),
+                      // Grand Total
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Grand Total',
+                              style: TextStyle(
+                                  fontSize: 12, fontWeight: FontWeight.bold)),
+                          Text('₹${summary.grandTotal.toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                  fontSize: 12, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
                     ],
-                    // Subtotal (before discount)
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Subtotal',
-                            style: TextStyle(fontSize: 10, color: Colors.grey)),
-                        Text('₹${(summary.subTotal.toStringAsFixed(2))}',
-                            style: const TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.grey)),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    // Tax/GST
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('GST/Tax',
-                            style: TextStyle(fontSize: 10, color: Colors.grey)),
-                        Text('₹${summary.taxTotal.toStringAsFixed(2)}',
-                            style: const TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.grey)),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    const Divider(height: 1),
-                    const SizedBox(height: 8),
-                    // Grand Total
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Grand Total',
-                            style: TextStyle(
-                                fontSize: 12, fontWeight: FontWeight.bold)),
-                        Text('₹${summary.grandTotal.toStringAsFixed(2)}',
-                            style: const TextStyle(
-                                fontSize: 12, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                  ],
+                  ),
                 ),
-              ),
 
-              const SizedBox(height: 12),
-              Center(
-                child: Text('Thank you for doing business with us',
-                    style: const TextStyle(fontSize: 9, color: Colors.grey),
-                    textAlign: TextAlign.center),
-              ),
-            ],
+                const SizedBox(height: 12),
+                Center(
+                  child: Text('Thank you for doing business with us',
+                      style: const TextStyle(fontSize: 9, color: Colors.grey),
+                      textAlign: TextAlign.center),
+                ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: _printing ? null : () => Navigator.pop(dialogCtx),
+              child: const Text('Close'),
+            ),
+            FilledButton.icon(
+              onPressed: _printing
+                  ? null
+                  : () async {
+                      setState(() => _printing = true);
+                      try {
+                        final receiptPdf =
+                            await ReceiptPdfService().generateSimpleReceipt(
+                          shopName: shopName,
+                          invoiceNo: '${now.millisecondsSinceEpoch % 10000}',
+                          items: rows
+                              .map((row) => (
+                                    name: row.product.name,
+                                    qty: row.item.quantity,
+                                    discountAmount: row.item.discountAmount,
+                                    netAmount: row.product.sellingPrice *
+                                        row.item.quantity,
+                                  ))
+                              .toList(),
+                          grandTotal: summary.grandTotal,
+                          branding: branding,
+                        );
+                        if (mounted) {
+                          await Printing.layoutPdf(
+                            onLayout: (_) => Uint8List.fromList(receiptPdf),
+                          );
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Print failed: $e')),
+                          );
+                        }
+                      } finally {
+                        if (mounted) setState(() => _printing = false);
+                      }
+                    },
+              icon: _printing
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.print_rounded),
+              label: const Text('Print'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Close'),
-          ),
-        ],
       ),
     );
   }
@@ -2049,7 +2126,9 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
                             ],
                           ),
                           const SizedBox(height: 8),
-                          Row(
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
                             children: [
                               FilledButton.icon(
                                 onPressed: selectedCartId == null ||
@@ -2060,7 +2139,6 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
                                     Icons.shopping_cart_checkout_rounded),
                                 label: const Text('Checkout'),
                               ),
-                              const SizedBox(width: 8),
                               OutlinedButton.icon(
                                 onPressed:
                                     selectedCartId == null || rows.isEmpty
@@ -2069,7 +2147,6 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
                                 icon: const Icon(Icons.print_rounded),
                                 label: const Text('Print'),
                               ),
-                              const SizedBox(width: 8),
                               OutlinedButton.icon(
                                 onPressed: selectedCartId == null
                                     ? null
