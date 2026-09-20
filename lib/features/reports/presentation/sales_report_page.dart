@@ -555,29 +555,30 @@ class SalesReportPage extends ConsumerWidget {
           builder: (context, setState) {
             return AlertDialog(
               title: Text('Return / Refund - $invoiceNo'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton.icon(
-                      onPressed: () {
-                        for (var i = 0; i < qtyCtrls.length; i++) {
-                          qtyCtrls[i].text = items[i]
-                              .remainingQty
-                              .toStringAsFixed(
-                                  items[i].remainingQty % 1 == 0 ? 0 : 2);
-                        }
-                        setState(() {});
-                      },
-                      icon: const Icon(Icons.select_all_rounded, size: 16),
-                      label: const Text('Return all remaining'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: () {
+                          for (var i = 0; i < qtyCtrls.length; i++) {
+                            qtyCtrls[i].text = items[i]
+                                .remainingQty
+                                .toStringAsFixed(
+                                    items[i].remainingQty % 1 == 0 ? 0 : 2);
+                          }
+                          setState(() {});
+                        },
+                        icon: const Icon(Icons.select_all_rounded, size: 16),
+                        label: const Text('Return all remaining'),
+                      ),
                     ),
-                  ),
-                  SizedBox(
-                    width: 520,
-                    height: 220,
-                    child: ListView.separated(
+                    SizedBox(
+                      width: 520,
+                      height: 220,
+                      child: ListView.separated(
                       itemCount: items.length,
                       separatorBuilder: (_, __) => const Divider(height: 1),
                       itemBuilder: (context, index) {
@@ -758,6 +759,7 @@ class SalesReportPage extends ConsumerWidget {
                     },
                   ),
                 ],
+                ),
               ),
               actions: [
                 TextButton(
