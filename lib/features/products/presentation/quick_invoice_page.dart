@@ -39,6 +39,9 @@ class _QuickInvoicePageState extends ConsumerState<QuickInvoicePage> {
   bool _printing = false;
   bool _isLoading = false;
 
+  // Cache for customer suggestions to avoid repeated Firestore reads
+  List<({String name, String phone, String address})>? _cachedCustomers;
+
   @override
   void initState() {
     super.initState();
@@ -133,6 +136,63 @@ class _QuickInvoicePageState extends ConsumerState<QuickInvoicePage> {
       _lines.fold<double>(0, (sum, line) => sum + line.taxAmount);
 
   double get _grandTotal => _subtotal + _taxTotal;
+
+  /// Normalizes a phone number by removing spaces, +91, 91, 0 prefixes.
+  /// Returns only the last 10 digits for comparison.
+  String _normalizePhone(String input) {
+    var digits = input.replaceAll(RegExp(r'\D'), '');
+    // Remove leading +91, 91, or 0
+    if (digits.startsWith('91') && digits.length > 10) {
+      digits = digits.substring(2);
+    } else if (digits.startsWith('0') && digits.length > 10) {
+      digits = digits.substring(1);
+    }
+    // Return last 10 digits if longer
+    if (digits.length > 10) {
+      digits = digits.substring(digits.length - 10);
+    }
+    return digits;
+  }
+
+  /// Loads and caches all customer records from quick_invoices.
+  /// Called once when the user starts typing a phone number.
+  Future<List<({String name, String phone, String address})>>
+      _loadCustomers() async {
+    if (_cachedCustomers != null) return _cachedCustomers!;
+
+    final storeId = ref.read(activeStoreIdProvider);
+    if (storeId == null || storeId.isEmpty) return [];
+
+    try {
+      final snapshot = await storeCollection(
+        ref.read(firestoreProvider),
+        storeId,
+        'quick_invoices',
+      ).orderBy('createdAt', descending: true).limit(200).get();
+
+      final seenPhones = <String>{};
+      final results = <({String name, String phone, String address})>[];
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        final phone = (data['customerPhone'] as String? ?? '').trim();
+        final name = (data['customerName'] as String? ?? '').trim();
+        final address = (data['customerAddress'] as String? ?? '').trim();
+
+        if (phone.isEmpty) continue;
+        final normalized = _normalizePhone(phone);
+        if (normalized.length < 4) continue; // Skip invalid/short numbers
+        if (!seenPhones.add(normalized)) continue;
+
+        results.add((name: name, phone: phone, address: address));
+      }
+
+      _cachedCustomers = results;
+      return results;
+    } catch (e) {
+      return [];
+    }
+  }
 
   Future<void> _showAddProductDialog(
       {_InvoiceDraftLine? existing, int? index}) async {
@@ -407,6 +467,8 @@ class _QuickInvoicePageState extends ConsumerState<QuickInvoicePage> {
         if (_savedInvoiceId == null) 'createdAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
       _savedInvoiceId = id;
+      // Invalidate cache so new customer phone appears next time
+      _cachedCustomers = null;
       if (showMessage && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Invoice saved.')),
@@ -495,39 +557,28 @@ class _QuickInvoicePageState extends ConsumerState<QuickInvoicePage> {
       initialValue: TextEditingValue(text: _customerPhoneCtrl.text),
       displayStringForOption: (customer) => customer.phone,
       optionsBuilder: (textEditingValue) async {
-        final query = textEditingValue.text.trim();
-        if (query.isEmpty) {
+        final rawQuery = textEditingValue.text.trim();
+        // Only start suggesting after 4 characters
+        if (rawQuery.length < 4) {
           return const [];
         }
-        final storeId = ref.read(activeStoreIdProvider);
-        if (storeId == null || storeId.isEmpty) return const [];
 
-        try {
-          final snapshot = await storeCollection(
-                  ref.read(firestoreProvider), storeId, 'quick_invoices')
-              .where('customerPhone', isGreaterThanOrEqualTo: query)
-              .where('customerPhone', isLessThan: '${query}z')
-              .orderBy('customerPhone')
-              .limit(10)
-              .get();
+        final query = _normalizePhone(rawQuery);
+        if (query.length < 4) return const [];
 
-          final seen = <String>{};
-          final results = <({String name, String phone, String address})>[];
+        // Load all customers (cached after first call)
+        final allCustomers = await _loadCustomers();
 
-          for (final doc in snapshot.docs) {
-            final phone = doc.get('customerPhone') as String? ?? '';
-            if (phone.isNotEmpty && seen.add(phone)) {
-              results.add((
-                name: doc.get('customerName') as String? ?? '',
-                phone: phone,
-                address: doc.get('customerAddress') as String? ?? '',
-              ));
-            }
-          }
-          return results;
-        } catch (e) {
-          return const [];
-        }
+        // Filter by normalized phone containing the query
+        final matches = allCustomers
+            .where((c) {
+              final normalizedStored = _normalizePhone(c.phone);
+              return normalizedStored.contains(query);
+            })
+            .take(10)
+            .toList();
+
+        return matches;
       },
       onSelected: (customer) {
         _customerPhoneCtrl.text = customer.phone;
@@ -536,14 +587,20 @@ class _QuickInvoicePageState extends ConsumerState<QuickInvoicePage> {
         setState(() => _savedInvoiceId = null);
       },
       fieldViewBuilder: (context, textEditingController, focusNode, onSubmit) {
-        textEditingController.text = _customerPhoneCtrl.text;
+        // Sync the external controller with internal
+        if (textEditingController.text != _customerPhoneCtrl.text) {
+          textEditingController.text = _customerPhoneCtrl.text;
+          textEditingController.selection = TextSelection.collapsed(
+            offset: textEditingController.text.length,
+          );
+        }
         return TextFormField(
           controller: textEditingController,
           focusNode: focusNode,
           keyboardType: TextInputType.phone,
           decoration: const InputDecoration(
             labelText: 'Customer Phone',
-            hintText: 'Enter mobile for suggestions',
+            hintText: 'Enter 4+ digits for suggestions',
             border: OutlineInputBorder(),
             isDense: true,
           ),
@@ -746,7 +803,7 @@ class _QuickInvoicePageState extends ConsumerState<QuickInvoicePage> {
                       ),
                       const SizedBox(height: 16),
 
-                      // FIX: Horizontal scroll to prevent column squishing
+                      // Horizontal scroll to prevent column squishing
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: ConstrainedBox(
