@@ -490,6 +490,77 @@ class _QuickInvoicePageState extends ConsumerState<QuickInvoicePage> {
     });
   }
 
+  Widget _buildCustomerPhoneAutocomplete(WidgetRef ref) {
+    return Autocomplete<Customer>(
+      initialValue: TextEditingValue(text: _customerPhoneCtrl.text),
+      displayStringForOption: (customer) => customer.mobile ?? '',
+      optionsBuilder: (textEditingValue) async {
+        final query = textEditingValue.text.trim();
+        if (query.isEmpty || query.length > 4) {
+          return const [];
+        }
+        final repo = ref.read(customerRepositoryProvider);
+        final results =
+            await repo.searchByNameOrMobile(query);
+        return results;
+      },
+      onSelected: (customer) {
+        _customerPhoneCtrl.text = customer.mobile ?? '';
+        _customerNameCtrl.text = customer.name;
+        _customerAddressCtrl.text = customer.address ?? '';
+        setState(() => _savedInvoiceId = null);
+      },
+      fieldViewBuilder: (context, textEditingController, focusNode, onSubmit) {
+        textEditingController.text = _customerPhoneCtrl.text;
+        return TextFormField(
+          controller: textEditingController,
+          focusNode: focusNode,
+          keyboardType: TextInputType.phone,
+          decoration: const InputDecoration(
+            labelText: 'Customer Phone',
+            hintText: 'Enter mobile (up to 4 digits for suggestions)',
+            border: OutlineInputBorder(),
+            isDense: true,
+          ),
+          onChanged: (value) {
+            _customerPhoneCtrl.text = value;
+            if (value.length > 4) {
+              focusNode.unfocus();
+            }
+          },
+        );
+      },
+      optionsViewBuilder: (context, onSelected, options) {
+        if (options.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        return Align(
+          alignment: Alignment.topLeft,
+          child: Material(
+            elevation: 4,
+            child: SizedBox(
+              width: 300,
+              height: 200,
+              child: ListView.builder(
+                padding: EdgeInsets.zero,
+                itemCount: options.length,
+                itemBuilder: (context, index) {
+                  final customer = options.elementAt(index);
+                  return ListTile(
+                    dense: true,
+                    title: Text(customer.name),
+                    subtitle: Text(customer.mobile ?? ''),
+                    onTap: () => onSelected(customer),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final branding = ref.watch(invoiceBrandingProvider).valueOrNull ??
@@ -564,21 +635,12 @@ class _QuickInvoicePageState extends ConsumerState<QuickInvoicePage> {
                             fontSize: 18, fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: 12),
+                      _buildCustomerPhoneAutocomplete(ref),
+                      const SizedBox(height: 10),
                       TextField(
                         controller: _customerNameCtrl,
                         decoration: const InputDecoration(
                           labelText: 'Customer Name',
-                          border: OutlineInputBorder(),
-                          isDense: true,
-                        ),
-                        onChanged: (_) =>
-                            setState(() => _savedInvoiceId = null),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: _customerPhoneCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Customer Phone',
                           border: OutlineInputBorder(),
                           isDense: true,
                         ),
