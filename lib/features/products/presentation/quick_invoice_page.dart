@@ -496,7 +496,7 @@ class _QuickInvoicePageState extends ConsumerState<QuickInvoicePage> {
       displayStringForOption: (customer) => customer.phone,
       optionsBuilder: (textEditingValue) async {
         final query = textEditingValue.text.trim();
-        if (query.isEmpty || query.length > 4) {
+        if (query.isEmpty) {
           return const [];
         }
         final storeId = ref.read(activeStoreIdProvider);
@@ -543,15 +543,12 @@ class _QuickInvoicePageState extends ConsumerState<QuickInvoicePage> {
           keyboardType: TextInputType.phone,
           decoration: const InputDecoration(
             labelText: 'Customer Phone',
-            hintText: 'Enter mobile (up to 4 digits for suggestions)',
+            hintText: 'Enter mobile for suggestions',
             border: OutlineInputBorder(),
             isDense: true,
           ),
           onChanged: (value) {
             _customerPhoneCtrl.text = value;
-            if (value.length > 4) {
-              focusNode.unfocus();
-            }
           },
         );
       },
