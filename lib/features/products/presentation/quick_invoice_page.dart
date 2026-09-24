@@ -13,6 +13,7 @@ import '../../../core/di/providers.dart';
 import '../../../core/firestore/firestore_ids.dart';
 import '../../../core/firestore/store_scope.dart';
 import '../../../core/models/invoice_branding.dart';
+import '../../../core/models/invoice_document.dart';
 import '../../../core/services/pdf_service.dart';
 import '../../store/presentation/store_auth_controller.dart';
 
@@ -498,27 +499,29 @@ class _QuickInvoicePageState extends ConsumerState<QuickInvoicePage> {
 
     setState(() => _printing = true);
     try {
-      final bytes = await ReceiptPdfService().generateClassicInvoice(
-        shopName: shopName,
-        invoiceNo: _invoiceNo,
-        invoiceDate: _invoiceDate,
-        customerName: _customerNameCtrl.text.trim(),
-        customerAddress: _customerAddressCtrl.text.trim(),
-        branding: branding,
-        items: _lines
-            .map(
-              (line) => (
-                description: line.description,
-                unitPrice: line.unitPrice,
-                qty: line.quantity,
-                lineTotal: line.lineTotal,
-              ),
-            )
-            .toList(growable: false),
-        subTotal: _subtotal,
-        total: _grandTotal,
-        taxTotal: _taxTotal,
-        footerNote: _noteCtrl.text.trim(),
+      final bytes = await ReceiptPdfService().generateInvoicePdf(
+        invoice: InvoiceDocument(
+          shopName: shopName,
+          invoiceNo: _invoiceNo,
+          invoiceDate: _invoiceDate,
+          customerName: _customerNameCtrl.text.trim(),
+          customerAddress: _customerAddressCtrl.text.trim(),
+          branding: branding,
+          items: _lines
+              .map(
+                (line) => InvoiceLine(
+                  description: line.description,
+                  unitPrice: line.unitPrice,
+                  qty: line.quantity,
+                  lineTotal: line.lineTotal,
+                ),
+              )
+              .toList(growable: false),
+          subTotal: _subtotal,
+          total: _grandTotal,
+          taxTotal: _taxTotal,
+          footerNote: _noteCtrl.text.trim(),
+        ),
       );
       final pdfBytes = Uint8List.fromList(bytes);
       if (kIsWeb) {

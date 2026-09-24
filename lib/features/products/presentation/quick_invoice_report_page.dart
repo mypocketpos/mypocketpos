@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 
 import '../../../core/firestore/store_scope.dart';
+import '../../../core/models/invoice_document.dart';
 import '../../../core/services/pdf_service.dart';
 import '../../../core/utilities/money.dart';
 import '../../store/presentation/store_auth_controller.dart';
@@ -276,27 +277,29 @@ class _QuickInvoiceReportPageState extends ConsumerState<QuickInvoiceReportPage>
       final invoiceNo = data['invoiceNo'] as String? ?? 'Unknown';
       final items = (data['items'] as List?) ?? [];
 
-      final bytes = await ReceiptPdfService().generateClassicInvoice(
-        shopName: shopName,
-        invoiceNo: invoiceNo,
-        invoiceDate:
-            (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-        customerName: data['customerName'] as String? ?? '',
-        customerAddress: data['customerAddress'] as String? ?? '',
-        items: items
-            .map(
-              (item) => (
-                description: item['description'] as String? ?? 'Item',
-                unitPrice: (item['unitPrice'] as num?)?.toDouble() ?? 0,
-                qty: (item['quantity'] as num?)?.toDouble() ?? 0,
-                lineTotal: (item['lineTotal'] as num?)?.toDouble() ?? 0,
-              ),
-            )
-            .toList(growable: false),
-        subTotal: (data['subTotal'] as num?)?.toDouble() ?? 0,
-        total: (data['grandTotal'] as num?)?.toDouble() ?? 0,
-        taxTotal: (data['taxTotal'] as num?)?.toDouble(),
-        footerNote: data['note'] as String? ?? '',
+      final bytes = await ReceiptPdfService().generateInvoicePdf(
+        invoice: InvoiceDocument(
+          shopName: shopName,
+          invoiceNo: invoiceNo,
+          invoiceDate:
+              (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+          customerName: data['customerName'] as String? ?? '',
+          customerAddress: data['customerAddress'] as String? ?? '',
+          items: items
+              .map(
+                (item) => InvoiceLine(
+                  description: item['description'] as String? ?? 'Item',
+                  unitPrice: (item['unitPrice'] as num?)?.toDouble() ?? 0,
+                  qty: (item['quantity'] as num?)?.toDouble() ?? 0,
+                  lineTotal: (item['lineTotal'] as num?)?.toDouble() ?? 0,
+                ),
+              )
+              .toList(growable: false),
+          subTotal: (data['subTotal'] as num?)?.toDouble() ?? 0,
+          total: (data['grandTotal'] as num?)?.toDouble() ?? 0,
+          taxTotal: (data['taxTotal'] as num?)?.toDouble(),
+          footerNote: data['note'] as String? ?? '',
+        ),
       );
 
       if (!mounted) return;

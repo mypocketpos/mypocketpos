@@ -12,6 +12,7 @@ import '../../../core/di/providers.dart';
 import '../../../core/firestore/firestore_mappers.dart';
 import '../../../core/firestore/store_scope.dart';
 import '../../../core/models/invoice_branding.dart';
+import '../../../core/models/invoice_document.dart';
 import '../../../core/services/pdf_service.dart';
 import '../../barcode/presentation/barcode_scanner_page.dart';
 import '../../barcode/presentation/hid_scanner_listener.dart';
@@ -862,20 +863,30 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
                       setState(() => _printing = true);
                       try {
                         final receiptPdf =
-                            await ReceiptPdfService().generateSimpleReceipt(
-                          shopName: shopName,
-                          invoiceNo: '${now.millisecondsSinceEpoch % 10000}',
-                          items: rows
-                              .map((row) => (
-                                    name: row.product.name,
+                            await ReceiptPdfService().generateInvoicePdf(
+                          invoice: InvoiceDocument(
+                            shopName: shopName,
+                            invoiceNo: '${now.millisecondsSinceEpoch % 10000}',
+                            invoiceDate: now,
+                            customerName: 'Walk-in Customer',
+                            customerAddress: '',
+                            items: rows
+                                .map(
+                                  (row) => InvoiceLine(
+                                    description: row.product.name,
+                                    unitPrice: row.product.sellingPrice,
                                     qty: row.item.quantity,
-                                    discountAmount: row.item.discountAmount,
-                                    netAmount: row.product.sellingPrice *
+                                    lineTotal: row.product.sellingPrice *
                                         row.item.quantity,
-                                  ))
-                              .toList(),
-                          grandTotal: summary.grandTotal,
-                          branding: branding,
+                                  ),
+                                )
+                                .toList(growable: false),
+                            subTotal: summary.subTotal,
+                            total: summary.grandTotal,
+                            taxTotal: summary.taxTotal,
+                            footerNote: 'Thank you for doing business with us',
+                            branding: branding,
+                          ),
                         );
                         if (mounted) {
                           await Printing.layoutPdf(

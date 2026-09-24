@@ -14,6 +14,13 @@ import '../../../core/firestore/store_scope.dart';
 import '../../../core/utilities/csv_file_export.dart';
 import '../../store/presentation/store_auth_controller.dart';
 
+double parseProductImportOpeningStock(String raw) {
+  final value = raw.trim();
+  if (value.isEmpty) return 0;
+  final parsed = double.tryParse(value);
+  return parsed ?? 0;
+}
+
 class ProductImportPage extends ConsumerStatefulWidget {
   const ProductImportPage({super.key});
 
@@ -34,6 +41,7 @@ class _ProductImportPageState extends ConsumerState<ProductImportPage> {
     'sellingPrice',
     'taxPercent',
     'unit',
+    'openingStock',
     'hideFromQuickCheckout',
     'quickCheckoutEmoji',
     'expiryDate',
@@ -50,6 +58,7 @@ class _ProductImportPageState extends ConsumerState<ProductImportPage> {
         '10.00',
         '5',
         'piece',
+        '12',
         'false',
         '☕',
         '2027-03-31',
@@ -62,6 +71,7 @@ class _ProductImportPageState extends ConsumerState<ProductImportPage> {
         '15.00',
         '12',
         'piece',
+        '0',
         'true',
         '🍪',
         '',
@@ -117,6 +127,7 @@ class _ProductImportPageState extends ConsumerState<ProductImportPage> {
           ((data['sellingPrice'] as num?) ?? 0).toString(),
           ((data['taxPercent'] as num?) ?? 0).toString(),
           (data['unit'] as String?) ?? 'piece',
+          ((data['openingStock'] as num?) ?? 0).toString(),
           ((data['hideFromQuickCheckout'] as bool?) ?? false).toString(),
           (data['quickCheckoutEmoji'] as String?) ?? '',
           expiryDate == null ? '' : DateFormat('yyyy-MM-dd').format(expiryDate),
@@ -201,6 +212,8 @@ class _ProductImportPageState extends ConsumerState<ProductImportPage> {
       }
       final codeKey = map['productCode']!.toLowerCase();
       final barcodeKey = map['barcode']!.toLowerCase();
+      final openingStockRaw = map['openingStock'] ?? '';
+      final openingStock = parseProductImportOpeningStock(openingStockRaw);
       final errors = <String>[];
       if (map['name']!.isEmpty) errors.add('Name is required');
       if (map['productCode']!.isEmpty) errors.add('Product code is required');
@@ -213,6 +226,10 @@ class _ProductImportPageState extends ConsumerState<ProductImportPage> {
       if (purchasePrice == null) errors.add('Invalid purchasePrice');
       if (sellingPrice == null) errors.add('Invalid sellingPrice');
       if (taxPercent == null) errors.add('Invalid taxPercent');
+      if (openingStockRaw.trim().isNotEmpty &&
+          double.tryParse(openingStockRaw.trim()) == null) {
+        errors.add('Invalid openingStock');
+      }
       final expiryDate = _parseDate(map['expiryDate']!);
       if (map['expiryDate']!.isNotEmpty && expiryDate == null) {
         errors.add('Invalid expiryDate. Use yyyy-MM-dd');
@@ -236,6 +253,7 @@ class _ProductImportPageState extends ConsumerState<ProductImportPage> {
           purchasePrice: purchasePrice ?? 0,
           sellingPrice: sellingPrice ?? 0,
           taxPercent: taxPercent ?? 0,
+          openingStock: openingStock,
           unit: map['unit']!.isEmpty ? 'piece' : map['unit']!,
           hideFromQuickCheckout: _parseBool(map['hideFromQuickCheckout']!),
           quickCheckoutEmoji: map['quickCheckoutEmoji']!.isEmpty
@@ -281,7 +299,7 @@ class _ProductImportPageState extends ConsumerState<ProductImportPage> {
             purchasePrice: row.purchasePrice,
             taxPercent: row.taxPercent,
             unit: row.unit,
-            openingStock: 0,
+            openingStock: row.openingStock,
             showInQuickCheckout: !row.hideFromQuickCheckout,
             quickCheckoutEmoji: row.quickCheckoutEmoji,
             expiryDate: row.expiryDate,
@@ -505,6 +523,7 @@ class _ProductImportRow {
     required this.purchasePrice,
     required this.sellingPrice,
     required this.taxPercent,
+    required this.openingStock,
     required this.unit,
     required this.hideFromQuickCheckout,
     required this.quickCheckoutEmoji,
@@ -520,6 +539,7 @@ class _ProductImportRow {
   final double purchasePrice;
   final double sellingPrice;
   final double taxPercent;
+  final double openingStock;
   final String unit;
   final bool hideFromQuickCheckout;
   final String? quickCheckoutEmoji;

@@ -3,6 +3,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:intl/intl.dart';
 
 import '../models/invoice_branding.dart';
+import '../models/invoice_document.dart';
 
 class ReceiptPdfService {
   Future<List<int>> generateSimpleReceipt({
@@ -239,19 +240,47 @@ class ReceiptPdfService {
     InvoiceBranding? branding,
     String? footerNote,
   }) async {
+    return generateInvoicePdf(
+      invoice: InvoiceDocument(
+        shopName: shopName,
+        invoiceNo: invoiceNo,
+        invoiceDate: invoiceDate,
+        customerName: customerName,
+        customerAddress: customerAddress,
+        items: items
+            .map((item) => InvoiceLine(
+                  description: item.description,
+                  unitPrice: item.unitPrice,
+                  qty: item.qty,
+                  lineTotal: item.lineTotal,
+                ))
+            .toList(growable: false),
+        subTotal: subTotal,
+        total: total,
+        taxTotal: taxTotal,
+        footerNote: footerNote,
+        branding: branding,
+      ),
+    );
+  }
+
+  Future<List<int>> generateInvoicePdf({
+    required InvoiceDocument invoice,
+  }) async {
     final doc = pw.Document();
-    final headerName = (branding?.displayName.isNotEmpty ?? false)
-        ? branding!.displayName
-        : shopName;
+    final headerName = (invoice.branding?.displayName.isNotEmpty ?? false)
+        ? invoice.branding!.displayName
+        : invoice.shopName;
     final customerBlock = [
-      if (customerName.trim().isNotEmpty) customerName.trim(),
-      if (customerAddress.trim().isNotEmpty) customerAddress.trim(),
+      if (invoice.customerName.trim().isNotEmpty) invoice.customerName.trim(),
+      if (invoice.customerAddress.trim().isNotEmpty)
+        invoice.customerAddress.trim(),
     ].join('\n');
     final footerContacts = [
-      if (branding != null && branding.phone.trim().isNotEmpty)
-        branding.phone.trim(),
-      if (branding != null && branding.email.trim().isNotEmpty)
-        branding.email.trim(),
+      if (invoice.branding != null && invoice.branding!.phone.trim().isNotEmpty)
+        invoice.branding!.phone.trim(),
+      if (invoice.branding != null && invoice.branding!.email.trim().isNotEmpty)
+        invoice.branding!.email.trim(),
     ].join(' | ');
 
     doc.addPage(
@@ -273,9 +302,10 @@ class ReceiptPdfService {
                         fontWeight: pw.FontWeight.bold,
                       ),
                     ),
-                    if (branding != null && branding.address.isNotEmpty) ...[
+                    if (invoice.branding != null &&
+                        invoice.branding!.address.isNotEmpty) ...[
                       pw.SizedBox(height: 8),
-                      pw.Text(branding.address,
+                      pw.Text(invoice.branding!.address,
                           style: const pw.TextStyle(fontSize: 11)),
                     ],
                     if (footerContacts.isNotEmpty) ...[
@@ -283,9 +313,10 @@ class ReceiptPdfService {
                       pw.Text(footerContacts,
                           style: const pw.TextStyle(fontSize: 11)),
                     ],
-                    if (branding != null && branding.gstin.isNotEmpty) ...[
+                    if (invoice.branding != null &&
+                        invoice.branding!.gstin.isNotEmpty) ...[
                       pw.SizedBox(height: 4),
-                      pw.Text('GSTIN: ${branding.gstin}',
+                      pw.Text('GSTIN: ${invoice.branding!.gstin}',
                           style: const pw.TextStyle(fontSize: 11)),
                     ],
                   ],
@@ -304,11 +335,14 @@ class ReceiptPdfService {
                     ),
                   ),
                   pw.SizedBox(height: 12),
+                  _classicMetaLine('Date',
+                      DateFormat('dd/MM/yyyy').format(invoice.invoiceDate)),
+                  _classicMetaLine('Invoice No', invoice.invoiceNo),
                   _classicMetaLine(
-                      'Date', DateFormat('dd/MM/yyyy').format(invoiceDate)),
-                  _classicMetaLine('Invoice No', invoiceNo),
-                  _classicMetaLine('Invoice To',
-                      customerName.trim().isEmpty ? '-' : customerName.trim()),
+                      'Invoice To',
+                      invoice.customerName.trim().isEmpty
+                          ? '-'
+                          : invoice.customerName.trim()),
                 ],
               ),
             ],
@@ -349,7 +383,7 @@ class ReceiptPdfService {
                   _classicCell('Total', isHeader: true, alignRight: true),
                 ],
               ),
-              ...items.map(
+              ...invoice.items.map(
                 (item) => pw.TableRow(
                   children: [
                     _classicCell(item.description),
@@ -370,10 +404,10 @@ class ReceiptPdfService {
               width: 240,
               child: pw.Column(
                 children: [
-                  _classicTotalLine('Sub-total', subTotal),
-                  if (taxTotal != null && taxTotal > 0)
-                    _classicTotalLine('GST', taxTotal),
-                  _classicTotalLine('TOTAL', total, bold: true),
+                  _classicTotalLine('Sub-total', invoice.subTotal),
+                  if (invoice.taxTotal != null && invoice.taxTotal! > 0)
+                    _classicTotalLine('GST', invoice.taxTotal!),
+                  _classicTotalLine('TOTAL', invoice.total, bold: true),
                 ],
               ),
             ),
@@ -391,10 +425,12 @@ class ReceiptPdfService {
               child: pw.Text(footerContacts, textAlign: pw.TextAlign.center),
             ),
           ],
-          if (footerNote != null && footerNote.trim().isNotEmpty) ...[
+          if (invoice.footerNote != null &&
+              invoice.footerNote!.trim().isNotEmpty) ...[
             pw.SizedBox(height: 8),
             pw.Center(
-              child: pw.Text(footerNote.trim(), textAlign: pw.TextAlign.center),
+              child: pw.Text(invoice.footerNote!.trim(),
+                  textAlign: pw.TextAlign.center),
             ),
           ],
         ],
