@@ -8,7 +8,6 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 
-import '../../../core/di/providers.dart';
 import '../../../core/firestore/store_scope.dart';
 import '../../../core/services/pdf_service.dart';
 import '../../../core/utilities/money.dart';
@@ -193,80 +192,67 @@ class _QuickInvoiceReportPageState extends ConsumerState<QuickInvoiceReportPage>
                           final invoiceNo = data['invoiceNo'] as String?;
                           final customerName =
                               data['customerName'] as String? ?? '-';
-                          final customerPhone =
-                              data['customerPhone'] as String? ?? '-';
                           final createdAt = data['createdAt'] as Timestamp?;
                           final grandTotal =
                               (data['grandTotal'] as num?)?.toDouble() ?? 0;
                           final items = (data['items'] as List?)?.length ?? 0;
 
-                          return ListTile(
-                            leading: CircleAvatar(
-                              child: Text('${index + 1}'),
-                            ),
-                            title: Text(invoiceNo ?? 'Unknown'),
-                            subtitle: Text(
-                              '${customerName.isNotEmpty ? customerName : 'Walk-in'} • $items items',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            trailing: SizedBox(
-                              width: 260,
+                          return InkWell(
+                            onTap: () => _showInvoiceDetails(context, data),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
                               child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
-                                  Column(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.center,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.end,
-                                    children: [
-                                      Text(
-                                        formatInr(grandTotal),
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                      if (createdAt != null)
-                                        Text(
-                                          DateFormat('dd MMM, HH:mm')
-                                              .format(createdAt.toDate()),
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            color: Colors.grey,
-                                          ),
-                                        ),
-                                    ],
+                                  CircleAvatar(
+                                    radius: 22,
+                                    child: Text('${index + 1}'),
                                   ),
                                   const SizedBox(width: 12),
-                                  IconButton(
-                                    icon: const Icon(Icons.print_outlined,
-                                        size: 18),
-                                    tooltip: 'Print',
-                                    onPressed: () => _printInvoice(data),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.edit_outlined,
-                                        size: 18),
-                                    tooltip: 'Edit',
-                                    onPressed: () => context.push(
-                                      '/quick-invoice?id=${doc.id}',
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          invoiceNo ?? 'Unknown',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          '${customerName.isNotEmpty ? customerName : 'Walk-in'} • $items items',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: Colors.grey,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                  IconButton(
-                                    icon: const Icon(Icons.delete_outlined,
-                                        size: 18),
-                                    tooltip: 'Delete',
-                                    onPressed: () =>
+                                  const SizedBox(width: 8),
+                                  QuickInvoiceReportTrailing(
+                                    grandTotal: grandTotal,
+                                    createdAt: createdAt?.toDate(),
+                                    onPrint: () => _printInvoice(data),
+                                    onEdit: () => context.push(
+                                      '/quick-invoice?id=${doc.id}',
+                                    ),
+                                    onDelete: () =>
                                         _deleteInvoice(context, doc.id),
                                   ),
                                 ],
                               ),
                             ),
-                            onTap: () => _showInvoiceDetails(context, data),
                           );
                         },
                       ),
@@ -437,8 +423,7 @@ class _QuickInvoiceReportPageState extends ConsumerState<QuickInvoiceReportPage>
                   children: [
                     const Text('Subtotal:'),
                     Text(
-                      formatInr(
-                          (data['subTotal'] as num?)?.toDouble() ?? 0),
+                      formatInr((data['subTotal'] as num?)?.toDouble() ?? 0),
                     ),
                   ],
                 ),
@@ -450,8 +435,7 @@ class _QuickInvoiceReportPageState extends ConsumerState<QuickInvoiceReportPage>
                       style: TextStyle(fontWeight: FontWeight.w700),
                     ),
                     Text(
-                      formatInr(
-                          (data['grandTotal'] as num?)?.toDouble() ?? 0),
+                      formatInr((data['grandTotal'] as num?)?.toDouble() ?? 0),
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                   ],
@@ -496,6 +480,107 @@ class _QuickInvoiceReportPageState extends ConsumerState<QuickInvoiceReportPage>
           ),
         ],
       ),
+    );
+  }
+}
+
+class QuickInvoiceReportTrailing extends StatelessWidget {
+  const QuickInvoiceReportTrailing({
+    super.key,
+    required this.grandTotal,
+    this.createdAt,
+    this.onPrint,
+    this.onEdit,
+    this.onDelete,
+  });
+
+  final double grandTotal;
+  final DateTime? createdAt;
+  final VoidCallback? onPrint;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final amount = Text(
+      formatInr(grandTotal),
+      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+      overflow: TextOverflow.ellipsis,
+      maxLines: 1,
+    );
+
+    final meta = createdAt != null
+        ? Text(
+            DateFormat('dd MMM, HH:mm').format(createdAt!),
+            style: const TextStyle(fontSize: 11, color: Colors.grey),
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
+          )
+        : null;
+
+    final actionButtons = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          icon: const Icon(Icons.print_outlined, size: 18),
+          tooltip: 'Print',
+          onPressed: onPrint,
+          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+          padding: EdgeInsets.zero,
+        ),
+        IconButton(
+          icon: const Icon(Icons.edit_outlined, size: 18),
+          tooltip: 'Edit',
+          onPressed: onEdit,
+          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+          padding: EdgeInsets.zero,
+        ),
+        IconButton(
+          icon: const Icon(Icons.delete_outlined, size: 18),
+          tooltip: 'Delete',
+          onPressed: onDelete,
+          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+          padding: EdgeInsets.zero,
+        ),
+      ],
+    );
+
+    final width = MediaQuery.sizeOf(context).width;
+    if (width < 360) {
+      return ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 150),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            amount,
+            if (meta != null) ...[
+              const SizedBox(height: 2),
+              meta,
+            ],
+            const SizedBox(height: 4),
+            actionButtons,
+          ],
+        ),
+      );
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              amount,
+              if (meta != null) meta,
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        actionButtons,
+      ],
     );
   }
 }

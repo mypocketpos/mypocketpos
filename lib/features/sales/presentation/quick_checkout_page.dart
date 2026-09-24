@@ -655,7 +655,8 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
                         Text(branding.address,
                             style: const TextStyle(fontSize: 9),
                             textAlign: TextAlign.center),
-                      if (branding.phone.isNotEmpty || branding.email.isNotEmpty)
+                      if (branding.phone.isNotEmpty ||
+                          branding.email.isNotEmpty)
                         Text(
                           [
                             if (branding.phone.isNotEmpty) branding.phone,
@@ -685,7 +686,8 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
                         style: const TextStyle(fontSize: 10)),
                   ],
                 ),
-                Text('Time: ${now.hour}:${now.minute.toString().padLeft(2, '0')}',
+                Text(
+                    'Time: ${now.hour}:${now.minute.toString().padLeft(2, '0')}',
                     style: const TextStyle(fontSize: 10, color: Colors.grey)),
 
                 const SizedBox(height: 12),
@@ -727,7 +729,8 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
 
                 // Items
                 ...rows.map((row) {
-                  final lineTotal = row.product.sellingPrice * row.item.quantity;
+                  final lineTotal =
+                      row.product.sellingPrice * row.item.quantity;
                   final taxText = row.item.taxPercent > 0
                       ? ' (${row.item.taxPercent.toStringAsFixed(0)}%)'
                       : '';
@@ -795,8 +798,8 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text('Subtotal',
-                              style: TextStyle(
-                                  fontSize: 10, color: Colors.grey)),
+                              style:
+                                  TextStyle(fontSize: 10, color: Colors.grey)),
                           Text('₹${(summary.subTotal.toStringAsFixed(2))}',
                               style: const TextStyle(
                                   fontSize: 10,
@@ -810,8 +813,8 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text('GST/Tax',
-                              style: TextStyle(
-                                  fontSize: 10, color: Colors.grey)),
+                              style:
+                                  TextStyle(fontSize: 10, color: Colors.grey)),
                           Text('₹${summary.taxTotal.toStringAsFixed(2)}',
                               style: const TextStyle(
                                   fontSize: 10,
@@ -2126,67 +2129,124 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
                             ],
                           ),
                           const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
+                          Row(
                             children: [
-                              FilledButton.icon(
-                                onPressed: selectedCartId == null ||
-                                        rows.isEmpty
-                                    ? null
-                                    : () => _showCartItemsPopup(selectedCartId),
-                                icon: const Icon(
-                                    Icons.shopping_cart_checkout_rounded),
-                                label: const Text('Checkout'),
+                              Expanded(
+                                child: FilledButton.icon(
+                                  onPressed: selectedCartId == null ||
+                                          rows.isEmpty
+                                      ? null
+                                      : () =>
+                                          _showCartItemsPopup(selectedCartId),
+                                  style: ButtonStyle(
+                                    padding: WidgetStateProperty.all(
+                                      const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 10,
+                                      ),
+                                    ),
+                                    minimumSize: WidgetStateProperty.all(
+                                      const Size(0, 42),
+                                    ),
+                                  ),
+                                  icon: const Icon(
+                                      Icons.shopping_cart_checkout_rounded,
+                                      size: 18),
+                                  label: const Text(
+                                    'Checkout',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
                               ),
-                              OutlinedButton.icon(
-                                onPressed:
-                                    selectedCartId == null || rows.isEmpty
-                                        ? null
-                                        : () => _printCartItems(rows),
-                                icon: const Icon(Icons.print_rounded),
-                                label: const Text('Print'),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed:
+                                      selectedCartId == null || rows.isEmpty
+                                          ? null
+                                          : () => _printCartItems(rows),
+                                  style: ButtonStyle(
+                                    padding: WidgetStateProperty.all(
+                                      const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 10,
+                                      ),
+                                    ),
+                                    minimumSize: WidgetStateProperty.all(
+                                      const Size(0, 42),
+                                    ),
+                                  ),
+                                  icon:
+                                      const Icon(Icons.print_rounded, size: 18),
+                                  label: const Text(
+                                    'Print',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
                               ),
-                              OutlinedButton.icon(
-                                onPressed: selectedCartId == null
-                                    ? null
-                                    : () async {
-                                        final confirm = await showDialog<bool>(
-                                          context: context,
-                                          builder: (ctx) => AlertDialog(
-                                            title: const Text('Clear Cart?'),
-                                            content: Text(
-                                                'Remove all items from "${selected?.name}"?'),
-                                            actions: [
-                                              TextButton(
-                                                onPressed: () =>
-                                                    Navigator.pop(ctx, false),
-                                                child: const Text('Cancel'),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: selectedCartId == null
+                                      ? null
+                                      : () async {
+                                          final confirm =
+                                              await showDialog<bool>(
+                                            context: context,
+                                            builder: (ctx) => AlertDialog(
+                                              title: const Text('Clear Cart?'),
+                                              content: Text(
+                                                'Remove all items from "${selected?.name}"?',
                                               ),
-                                              FilledButton(
-                                                onPressed: () =>
-                                                    Navigator.pop(ctx, true),
-                                                child: const Text('Clear'),
-                                              ),
-                                            ],
-                                          ),
-                                        );
-                                        if (confirm == true &&
-                                            mounted &&
-                                            selectedCartId != null) {
-                                          final rows = await ref
-                                              .read(salesRepositoryProvider)
-                                              .watchCartItems(selectedCartId)
-                                              .first;
-                                          for (final item in rows) {
-                                            await ref
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () =>
+                                                      Navigator.pop(ctx, false),
+                                                  child: const Text('Cancel'),
+                                                ),
+                                                FilledButton(
+                                                  onPressed: () =>
+                                                      Navigator.pop(ctx, true),
+                                                  child: const Text('Clear'),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                          if (confirm == true &&
+                                              mounted &&
+                                              selectedCartId != null) {
+                                            final cartRows = await ref
                                                 .read(salesRepositoryProvider)
-                                                .removeItem(item.item.id);
+                                                .watchCartItems(selectedCartId)
+                                                .first;
+                                            for (final item in cartRows) {
+                                              await ref
+                                                  .read(salesRepositoryProvider)
+                                                  .removeItem(item.item.id);
+                                            }
                                           }
-                                        }
-                                      },
-                                icon: const Icon(Icons.delete_outline_rounded),
-                                label: const Text('Clear'),
+                                        },
+                                  style: ButtonStyle(
+                                    padding: WidgetStateProperty.all(
+                                      const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 10,
+                                      ),
+                                    ),
+                                    minimumSize: WidgetStateProperty.all(
+                                      const Size(0, 42),
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.delete_outline_rounded,
+                                      size: 18),
+                                  label: const Text(
+                                    'Clear',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
                               ),
                             ],
                           ),
