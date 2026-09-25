@@ -2,7 +2,6 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
@@ -14,6 +13,7 @@ import '../../../core/firestore/store_scope.dart';
 import '../../../core/models/invoice_branding.dart';
 import '../../../core/models/printer_config.dart';
 import '../../../core/services/pdf_service.dart';
+import '../../../core/utilities/csv_file_export.dart';
 import '../../../core/utilities/pdf_share.dart';
 import '../../sales/domain/sales_repository.dart';
 import '../../store/presentation/store_auth_controller.dart';
@@ -67,13 +67,20 @@ class SalesReportPage extends ConsumerWidget {
           IconButton(
             tooltip: 'Export CSV',
             onPressed: () async {
-              final data = await ref.read(salesReportProvider.future);
-              if (!context.mounted) return;
-              await Clipboard.setData(ClipboardData(text: _toCsv(data)));
-              if (context.mounted) {
+              try {
+                final data = await ref.read(salesReportProvider.future);
+                await saveCsvFile(
+                  fileName: 'sales_report.csv',
+                  content: _toCsv(data),
+                );
+                if (!context.mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text('Sales report CSV copied to clipboard')),
+                  const SnackBar(content: Text('Sales report CSV downloaded')),
+                );
+              } catch (e) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('CSV download failed: $e')),
                 );
               }
             },

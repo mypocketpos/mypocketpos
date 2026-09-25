@@ -1,3 +1,5 @@
+import 'dart:math' show Random;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -188,7 +190,7 @@ class _ProductPageState extends ConsumerState<ProductPage> {
     final name = TextEditingController(text: product?.name ?? '');
     // New products get an auto-generated (editable) code.
     final code = TextEditingController(
-        text: product?.productCode ?? _generateProductCode());
+        text: product?.productCode ?? await _generateUniqueProductCode(ref));
     final barcode = TextEditingController(text: product?.barcode ?? '');
     final selling = TextEditingController(
         text: (product?.sellingPrice ?? 0).toStringAsFixed(2));
@@ -329,7 +331,10 @@ class _ProductPageState extends ConsumerState<ProductPage> {
                           suffixIcon: IconButton(
                             tooltip: 'Generate code',
                             icon: const Icon(Icons.autorenew_rounded),
-                            onPressed: () => code.text = _generateProductCode(),
+                            onPressed: () async {
+                              code.text = await _generateUniqueProductCode(ref);
+                              setLocal(() {});
+                            },
                           ),
                         ),
                         validator: (v) =>
@@ -500,6 +505,17 @@ class _ProductPageState extends ConsumerState<ProductPage> {
                       unit.text.trim().isEmpty ? 'piece' : unit.text.trim();
                   final repo = ref.read(productRepositoryProvider);
                   try {
+                    final matchingProduct =
+                        await repo.findByBarcode(code.text.trim());
+                    if (matchingProduct != null &&
+                        matchingProduct.id != product?.id) {
+                      messenger.showSnackBar(
+                        const SnackBar(
+                          content: Text('Product code is already in use.'),
+                        ),
+                      );
+                      return;
+                    }
                     if (isEdit) {
                       await repo.update(
                         id: product.id,
@@ -557,11 +573,21 @@ class _ProductPageState extends ConsumerState<ProductPage> {
     emoji.dispose();
   }
 
-  /// A short, human-friendly product code, e.g. `PRD-4F2A9C`.
-  String _generateProductCode() {
-    final suffix =
-        DateTime.now().millisecondsSinceEpoch.toRadixString(36).toUpperCase();
-    return 'PRD-${suffix.substring(suffix.length - 6)}';
+  Future<String> _generateUniqueProductCode(WidgetRef ref) async {
+    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    final random = Random.secure();
+    final repo = ref.read(productRepositoryProvider);
+
+    for (var attempt = 0; attempt < 10; attempt++) {
+      final suffix = List.generate(
+        8,
+        (_) => characters[random.nextInt(characters.length)],
+      ).join();
+      final candidate = 'PRD-$suffix';
+      if (await repo.findByBarcode(candidate) == null) return candidate;
+    }
+
+    throw StateError('Could not generate a unique product code.');
   }
 
   /// A valid EAN-13 barcode using the in-store "20" prefix + check digit, for

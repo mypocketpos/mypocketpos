@@ -12,6 +12,7 @@ import '../../../core/models/invoice_branding.dart';
 import '../../../core/models/printer_config.dart';
 import '../../../core/models/quick_checkout_config.dart';
 import '../../../core/models/storefront_shopping_config.dart';
+import '../../../core/utilities/validators.dart';
 import '../../mill_run/domain/milling_config.dart';
 import '../../store/presentation/store_auth_controller.dart';
 import '../../subscription/presentation/store_subscription_status.dart';
@@ -1122,6 +1123,14 @@ class _InvoiceBrandingCardState extends ConsumerState<_InvoiceBrandingCard> {
     final storeId = ref.read(activeStoreIdProvider);
     if (storeId == null) return;
 
+    final phoneError = validateMobile(_phoneCtrl.text);
+    if (phoneError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(phoneError)),
+      );
+      return;
+    }
+
     final prefix = _prefixCtrl.text.trim().toUpperCase();
     if (prefix.isEmpty || prefix.length > 8) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1341,7 +1350,8 @@ class _InvoiceBrandingCardState extends ConsumerState<_InvoiceBrandingCard> {
                 Expanded(
                   child: DropdownButtonFormField<int>(
                     initialValue: () {
-                      final baseYear = _currentFinancialYearStartYear(_financialYearStartMonth);
+                      final baseYear = _currentFinancialYearStartYear(
+                          _financialYearStartMonth);
                       if (_selectedFinancialYearStartYear >= baseYear - 2 &&
                           _selectedFinancialYearStartYear <= baseYear + 2) {
                         return _selectedFinancialYearStartYear;

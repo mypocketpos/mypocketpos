@@ -14,6 +14,7 @@ import '../../../core/firestore/store_scope.dart';
 import '../../../core/models/invoice_branding.dart';
 import '../../../core/models/invoice_document.dart';
 import '../../../core/services/pdf_service.dart';
+import '../../../core/utilities/validators.dart';
 import '../../barcode/presentation/barcode_scanner_page.dart';
 import '../../barcode/presentation/hid_scanner_listener.dart';
 import '../../store/presentation/store_auth_controller.dart';
@@ -331,14 +332,23 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(
-              ctx,
-              (
-                mobile: mobileCtrl.text.trim(),
-                name: nameCtrl.text.trim(),
-                cartName: cartNameCtrl.text.trim(),
-              ),
-            ),
+            onPressed: () {
+              final mobileError = validateMobile(mobileCtrl.text);
+              if (mobileError != null) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  SnackBar(content: Text(mobileError)),
+                );
+                return;
+              }
+              Navigator.pop(
+                ctx,
+                (
+                  mobile: mobileCtrl.text.trim(),
+                  name: nameCtrl.text.trim(),
+                  cartName: cartNameCtrl.text.trim(),
+                ),
+              );
+            },
             child: Text(existingCart == null ? 'Create' : 'Save'),
           ),
         ],
@@ -1605,6 +1615,14 @@ class _QuickCheckoutPageState extends ConsumerState<QuickCheckoutPage> {
                       const SnackBar(
                           content:
                               Text('Customer name and mobile are required')),
+                    );
+                    return;
+                  }
+                  final mobileError =
+                      validateMobile(mobileCtrl.text, required: true);
+                  if (mobileError != null) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      SnackBar(content: Text(mobileError)),
                     );
                     return;
                   }

@@ -15,6 +15,7 @@ import '../../../core/firestore/store_scope.dart';
 import '../../../core/models/invoice_branding.dart';
 import '../../../core/models/invoice_document.dart';
 import '../../../core/services/pdf_service.dart';
+import '../../../core/utilities/validators.dart';
 import '../../store/presentation/store_auth_controller.dart';
 
 class QuickInvoicePage extends ConsumerStatefulWidget {
@@ -431,6 +432,15 @@ class _QuickInvoicePageState extends ConsumerState<QuickInvoicePage> {
       if (showMessage && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Add at least one line item.')),
+        );
+      }
+      return false;
+    }
+    final phoneError = validateMobile(_customerPhoneCtrl.text);
+    if (phoneError != null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(phoneError)),
         );
       }
       return false;

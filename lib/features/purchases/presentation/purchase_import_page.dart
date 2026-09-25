@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:csv/csv.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/database/app_database.dart';
@@ -76,13 +75,10 @@ class _PurchaseImportPageState extends ConsumerState<PurchaseImportPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Purchase template downloaded.')),
       );
-    } catch (_) {
-      await Clipboard.setData(ClipboardData(text: _templateCsv()));
+    } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not save file. Template copied to clipboard.'),
-        ),
+        SnackBar(content: Text('Could not save purchase template: $e')),
       );
     }
   }

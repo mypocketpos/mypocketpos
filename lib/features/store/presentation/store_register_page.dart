@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/database/seed/demo_business_type.dart';
+import '../../../core/utilities/validators.dart';
 import '../../../core/web/parent_modal_bridge.dart';
 import 'store_auth_controller.dart';
 
@@ -35,15 +36,16 @@ class _StoreRegisterPageState extends ConsumerState<StoreRegisterPage> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    final storeId = await ref.read(storeAuthControllerProvider.notifier).register(
-          storeName: _storeName.text,
-          ownerName: _ownerName.text,
-          ownerUsername: _username.text,
-          password: _password.text,
-          businessType: _businessType,
-          mobile: _mobile.text,
-          email: _email.text,
-        );
+    final storeId =
+        await ref.read(storeAuthControllerProvider.notifier).register(
+              storeName: _storeName.text,
+              ownerName: _ownerName.text,
+              ownerUsername: _username.text,
+              password: _password.text,
+              businessType: _businessType,
+              mobile: _mobile.text,
+              email: _email.text,
+            );
     if (!mounted) return;
     if (storeId == null) {
       final err = ref.read(storeAuthControllerProvider).error;
@@ -102,7 +104,8 @@ class _StoreRegisterPageState extends ConsumerState<StoreRegisterPage> {
                         isDense: true,
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.category_rounded),
-                        helperText: 'Sample products & categories are created for this type',
+                        helperText:
+                            'Sample products & categories are created for this type',
                       ),
                       items: [
                         for (final t in DemoBusinessType.values)
@@ -115,12 +118,13 @@ class _StoreRegisterPageState extends ConsumerState<StoreRegisterPage> {
                   _field(_ownerName, 'Owner name *', Icons.person_rounded,
                       validator: _required),
                   _field(_mobile, 'Mobile', Icons.phone,
-                      keyboard: TextInputType.phone),
+                      keyboard: TextInputType.phone, validator: validateMobile),
                   _field(_email, 'Email *', Icons.email_outlined,
                       keyboard: TextInputType.emailAddress,
                       validator: _validEmail),
                   const Divider(height: 28),
-                  _field(_username, 'Owner username *', Icons.account_circle_outlined,
+                  _field(_username, 'Owner username *',
+                      Icons.account_circle_outlined,
                       validator: (v) => (v == null || v.trim().length < 3)
                           ? 'Min 3 characters'
                           : null),

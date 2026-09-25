@@ -6,6 +6,7 @@ import '../../../core/database/app_database.dart';
 import '../../../core/di/providers.dart';
 import '../../../core/firestore/store_scope.dart';
 import '../../../core/models/discount_policy.dart';
+import '../../../core/utilities/validators.dart';
 import '../../barcode/presentation/barcode_scanner_page.dart';
 import '../../barcode/presentation/hid_scanner_listener.dart';
 import '../../warehouse/domain/inventory_mode.dart';
@@ -333,10 +334,18 @@ class PosBillingPage extends ConsumerWidget {
                     );
                     return;
                   }
+                  final mobile = mobileCtrl.text.trim();
+                  final mobileError = validateMobile(mobile);
+                  if (mobileError != null) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      SnackBar(content: Text(mobileError)),
+                    );
+                    return;
+                  }
                   Navigator.pop(
                     ctx,
                     (
-                      mobile: mobileCtrl.text.trim(),
+                      mobile: mobile,
                       name: nameCtrl.text.trim(),
                       warehouseId: selectedWarehouse,
                     ),
@@ -1166,8 +1175,11 @@ class _CartDetailsState extends ConsumerState<_CartDetails> {
 
                   // Change calculation
                   Builder(builder: (context) {
-                    final paid = double.parse((double.tryParse(paidCtrl.text) ?? 0).toStringAsFixed(2));
-                    final roundedSummary = double.parse(summary.toStringAsFixed(2));
+                    final paid = double.parse(
+                        (double.tryParse(paidCtrl.text) ?? 0)
+                            .toStringAsFixed(2));
+                    final roundedSummary =
+                        double.parse(summary.toStringAsFixed(2));
                     final change = paid - roundedSummary;
                     return change >= 0
                         ? Row(
@@ -1200,7 +1212,16 @@ class _CartDetailsState extends ConsumerState<_CartDetails> {
             FilledButton.icon(
               style: FilledButton.styleFrom(
                   backgroundColor: Colors.green.shade700),
-              onPressed: () => Navigator.pop(ctx, true),
+              onPressed: () {
+                final mobileError = validateMobile(customerMobileCtrl.text);
+                if (mobileError != null) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    SnackBar(content: Text(mobileError)),
+                  );
+                  return;
+                }
+                Navigator.pop(ctx, true);
+              },
               icon: const Icon(Icons.check_circle_outline),
               label: const Text('Confirm Payment'),
             ),

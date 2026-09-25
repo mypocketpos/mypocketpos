@@ -8,11 +8,19 @@ Future<void> saveCsvFile({
   final bytes = utf8.encode(content);
   final blob = html.Blob(<Object>[bytes], 'text/csv;charset=utf-8');
   final url = html.Url.createObjectUrlFromBlob(blob);
+  final body = html.document.body;
+  if (body == null) {
+    html.Url.revokeObjectUrl(url);
+    throw StateError('Cannot download CSV before the page is ready.');
+  }
   final anchor = html.AnchorElement(href: url)
     ..download = fileName
     ..style.display = 'none';
-  html.document.body?.children.add(anchor);
+  body.children.add(anchor);
   anchor.click();
   anchor.remove();
-  html.Url.revokeObjectUrl(url);
+  Future<void>.delayed(
+    const Duration(seconds: 1),
+    () => html.Url.revokeObjectUrl(url),
+  );
 }
