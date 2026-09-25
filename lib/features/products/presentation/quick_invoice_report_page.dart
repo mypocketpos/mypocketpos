@@ -12,6 +12,7 @@ import '../../../core/firestore/store_scope.dart';
 import '../../../core/models/invoice_document.dart';
 import '../../../core/services/pdf_service.dart';
 import '../../../core/utilities/money.dart';
+import '../../../core/utilities/pdf_share.dart';
 import '../../store/presentation/store_auth_controller.dart';
 
 class QuickInvoiceReportPage extends ConsumerStatefulWidget {
@@ -245,6 +246,7 @@ class _QuickInvoiceReportPageState extends ConsumerState<QuickInvoiceReportPage>
                                     grandTotal: grandTotal,
                                     createdAt: createdAt?.toDate(),
                                     onPrint: () => _printInvoice(data),
+                                    onShare: () => _shareInvoice(data),
                                     onEdit: () => context.push(
                                       '/quick-invoice?id=${doc.id}',
                                     ),
@@ -318,6 +320,47 @@ class _QuickInvoiceReportPageState extends ConsumerState<QuickInvoiceReportPage>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Print failed: $e')),
+      );
+    }
+  }
+
+  Future<void> _shareInvoice(Map<String, dynamic> data) async {
+    try {
+      final invoiceNo = data['invoiceNo'] as String? ?? 'invoice';
+      final items = (data['items'] as List?) ?? [];
+      final bytes = await ReceiptPdfService().generateInvoicePdf(
+        invoice: InvoiceDocument(
+          shopName: data['shopName'] as String? ?? 'Invoice',
+          invoiceNo: invoiceNo,
+          invoiceDate:
+              (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+          customerName: data['customerName'] as String? ?? '',
+          customerAddress: data['customerAddress'] as String? ?? '',
+          items: items
+              .map(
+                (item) => InvoiceLine(
+                  description: item['description'] as String? ?? 'Item',
+                  unitPrice: (item['unitPrice'] as num?)?.toDouble() ?? 0,
+                  qty: (item['quantity'] as num?)?.toDouble() ?? 0,
+                  lineTotal: (item['lineTotal'] as num?)?.toDouble() ?? 0,
+                ),
+              )
+              .toList(growable: false),
+          subTotal: (data['subTotal'] as num?)?.toDouble() ?? 0,
+          total: (data['grandTotal'] as num?)?.toDouble() ?? 0,
+          taxTotal: (data['taxTotal'] as num?)?.toDouble(),
+          footerNote: data['note'] as String? ?? '',
+        ),
+      );
+      await sharePdfFile(
+        bytes: Uint8List.fromList(bytes),
+        fileName: '$invoiceNo.pdf',
+        text: 'Invoice $invoiceNo',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Share failed: $e')),
       );
     }
   }
@@ -493,6 +536,7 @@ class QuickInvoiceReportTrailing extends StatelessWidget {
     required this.grandTotal,
     this.createdAt,
     this.onPrint,
+    this.onShare,
     this.onEdit,
     this.onDelete,
   });
@@ -500,6 +544,7 @@ class QuickInvoiceReportTrailing extends StatelessWidget {
   final double grandTotal;
   final DateTime? createdAt;
   final VoidCallback? onPrint;
+  final VoidCallback? onShare;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
 
@@ -528,6 +573,13 @@ class QuickInvoiceReportTrailing extends StatelessWidget {
           icon: const Icon(Icons.print_outlined, size: 18),
           tooltip: 'Print',
           onPressed: onPrint,
+          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+          padding: EdgeInsets.zero,
+        ),
+        IconButton(
+          icon: const Icon(Icons.share_outlined, size: 18),
+          tooltip: 'Share',
+          onPressed: onShare,
           constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
           padding: EdgeInsets.zero,
         ),

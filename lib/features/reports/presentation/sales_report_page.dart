@@ -14,6 +14,7 @@ import '../../../core/firestore/store_scope.dart';
 import '../../../core/models/invoice_branding.dart';
 import '../../../core/models/printer_config.dart';
 import '../../../core/services/pdf_service.dart';
+import '../../../core/utilities/pdf_share.dart';
 import '../../sales/domain/sales_repository.dart';
 import '../../store/presentation/store_auth_controller.dart';
 import '../../../core/utilities/money.dart';
@@ -255,6 +256,13 @@ class SalesReportPage extends ConsumerWidget {
                                                 ? () => _printInvoice(
                                                     context, ref, row)
                                                 : null,
+                                          ),
+                                          IconButton(
+                                            tooltip: 'Share invoice',
+                                            icon: const Icon(
+                                                Icons.share_outlined),
+                                            onPressed: () => _shareInvoice(
+                                                context, ref, row),
                                           ),
                                           IconButton(
                                             tooltip: _isReturnCompleted(
@@ -585,186 +593,195 @@ class SalesReportPage extends ConsumerWidget {
                       width: 520,
                       height: 220,
                       child: ListView.separated(
-                      itemCount: items.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
-                      itemBuilder: (context, index) {
-                        final line = items[index];
-                        final soldText = line.soldQty
-                            .toStringAsFixed(line.soldQty % 1 == 0 ? 0 : 2);
-                        final returnedText = line.alreadyReturnedQty
-                            .toStringAsFixed(
-                                line.alreadyReturnedQty % 1 == 0 ? 0 : 2);
-                        final remainingText = line.remainingQty.toStringAsFixed(
-                            line.remainingQty % 1 == 0 ? 0 : 2);
-                        final isFullyReturned = line.remainingQty <= 0.0001;
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      line.productName,
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.w600),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Wrap(
-                                      spacing: 6,
-                                      runSpacing: 6,
-                                      children: [
-                                        Chip(
-                                          visualDensity: VisualDensity.compact,
-                                          label: Text('Sold: $soldText'),
-                                        ),
-                                        Chip(
-                                          visualDensity: VisualDensity.compact,
-                                          backgroundColor:
-                                              Colors.orange.withOpacity(0.12),
-                                          side: BorderSide(
-                                            color:
-                                                Colors.orange.withOpacity(0.35),
-                                          ),
-                                          label: Text(
-                                            'Returned: $returnedText',
-                                            style: const TextStyle(
-                                              color: Colors.orange,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ),
-                                        Chip(
-                                          visualDensity: VisualDensity.compact,
-                                          backgroundColor: isFullyReturned
-                                              ? Colors.red.withOpacity(0.12)
-                                              : Colors.green.withOpacity(0.12),
-                                          side: BorderSide(
-                                            color: (isFullyReturned
-                                                    ? Colors.red
-                                                    : Colors.green)
-                                                .withOpacity(0.35),
-                                          ),
-                                          label: Text(
-                                            'Remaining: $remainingText',
-                                            style: TextStyle(
-                                              color: isFullyReturned
-                                                  ? Colors.red
-                                                  : Colors.green,
-                                              fontWeight: FontWeight.w700,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              SizedBox(
-                                width: 90,
-                                child: GestureDetector(
-                                  onLongPress: () {
-                                    qtyCtrls[index].text = '0';
-                                    qtyCtrls[index].selection =
-                                        const TextSelection(
-                                      baseOffset: 0,
-                                      extentOffset: 1,
-                                    );
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          'Reset ${items[index].productName} to 0',
-                                        ),
-                                        duration:
-                                            const Duration(milliseconds: 900),
+                        itemCount: items.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final line = items[index];
+                          final soldText = line.soldQty
+                              .toStringAsFixed(line.soldQty % 1 == 0 ? 0 : 2);
+                          final returnedText = line.alreadyReturnedQty
+                              .toStringAsFixed(
+                                  line.alreadyReturnedQty % 1 == 0 ? 0 : 2);
+                          final remainingText = line.remainingQty
+                              .toStringAsFixed(
+                                  line.remainingQty % 1 == 0 ? 0 : 2);
+                          final isFullyReturned = line.remainingQty <= 0.0001;
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        line.productName,
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.w600),
                                       ),
-                                    );
-                                  },
-                                  child: TextField(
-                                    controller: qtyCtrls[index],
-                                    focusNode: qtyFocusNodes[index],
-                                    autofocus: index == 0,
-                                    keyboardType:
-                                        const TextInputType.numberWithOptions(
-                                            decimal: true),
-                                    onTap: () {
-                                      final raw = qtyCtrls[index].text.trim();
-                                      final parsed = double.tryParse(raw) ?? 0;
-                                      if (parsed <= 0) {
-                                        final next = items[index]
-                                            .remainingQty
-                                            .toStringAsFixed(
-                                                items[index].remainingQty % 1 ==
-                                                        0
-                                                    ? 0
-                                                    : 2);
-                                        qtyCtrls[index].text = next;
-                                        qtyCtrls[index].selection =
-                                            TextSelection(
-                                          baseOffset: 0,
-                                          extentOffset: next.length,
-                                        );
-                                      }
+                                      const SizedBox(height: 6),
+                                      Wrap(
+                                        spacing: 6,
+                                        runSpacing: 6,
+                                        children: [
+                                          Chip(
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            label: Text('Sold: $soldText'),
+                                          ),
+                                          Chip(
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            backgroundColor:
+                                                Colors.orange.withOpacity(0.12),
+                                            side: BorderSide(
+                                              color: Colors.orange
+                                                  .withOpacity(0.35),
+                                            ),
+                                            label: Text(
+                                              'Returned: $returnedText',
+                                              style: const TextStyle(
+                                                color: Colors.orange,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                          Chip(
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            backgroundColor: isFullyReturned
+                                                ? Colors.red.withOpacity(0.12)
+                                                : Colors.green
+                                                    .withOpacity(0.12),
+                                            side: BorderSide(
+                                              color: (isFullyReturned
+                                                      ? Colors.red
+                                                      : Colors.green)
+                                                  .withOpacity(0.35),
+                                            ),
+                                            label: Text(
+                                              'Remaining: $remainingText',
+                                              style: TextStyle(
+                                                color: isFullyReturned
+                                                    ? Colors.red
+                                                    : Colors.green,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                SizedBox(
+                                  width: 90,
+                                  child: GestureDetector(
+                                    onLongPress: () {
+                                      qtyCtrls[index].text = '0';
+                                      qtyCtrls[index].selection =
+                                          const TextSelection(
+                                        baseOffset: 0,
+                                        extentOffset: 1,
+                                      );
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'Reset ${items[index].productName} to 0',
+                                          ),
+                                          duration:
+                                              const Duration(milliseconds: 900),
+                                        ),
+                                      );
                                     },
-                                    textInputAction:
-                                        index == qtyCtrls.length - 1
-                                            ? TextInputAction.done
-                                            : TextInputAction.next,
-                                    onSubmitted: (_) {
-                                      if (index < qtyFocusNodes.length - 1) {
-                                        FocusScope.of(context).requestFocus(
-                                            qtyFocusNodes[index + 1]);
-                                      }
-                                    },
-                                    decoration: const InputDecoration(
-                                      border: OutlineInputBorder(),
-                                      isDense: true,
-                                      labelText: 'Return Qty',
+                                    child: TextField(
+                                      controller: qtyCtrls[index],
+                                      focusNode: qtyFocusNodes[index],
+                                      autofocus: index == 0,
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                              decimal: true),
+                                      onTap: () {
+                                        final raw = qtyCtrls[index].text.trim();
+                                        final parsed =
+                                            double.tryParse(raw) ?? 0;
+                                        if (parsed <= 0) {
+                                          final next = items[index]
+                                              .remainingQty
+                                              .toStringAsFixed(
+                                                  items[index].remainingQty %
+                                                              1 ==
+                                                          0
+                                                      ? 0
+                                                      : 2);
+                                          qtyCtrls[index].text = next;
+                                          qtyCtrls[index].selection =
+                                              TextSelection(
+                                            baseOffset: 0,
+                                            extentOffset: next.length,
+                                          );
+                                        }
+                                      },
+                                      textInputAction:
+                                          index == qtyCtrls.length - 1
+                                              ? TextInputAction.done
+                                              : TextInputAction.next,
+                                      onSubmitted: (_) {
+                                        if (index < qtyFocusNodes.length - 1) {
+                                          FocusScope.of(context).requestFocus(
+                                              qtyFocusNodes[index + 1]);
+                                        }
+                                      },
+                                      decoration: const InputDecoration(
+                                        border: OutlineInputBorder(),
+                                        isDense: true,
+                                        labelText: 'Return Qty',
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                            ],
-                          ),
-                        );
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: reasonCtrl,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        labelText: 'Return reason *',
+                        hintText:
+                            'Damaged item, billing error, customer cancellation...',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: refundMethod,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                        labelText: 'Refund method',
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'cash', child: Text('Cash')),
+                        DropdownMenuItem(value: 'upi', child: Text('UPI')),
+                        DropdownMenuItem(value: 'card', child: Text('Card')),
+                        DropdownMenuItem(
+                            value: 'bank', child: Text('Bank Transfer')),
+                      ],
+                      onChanged: (value) {
+                        if (value != null) {
+                          setState(() => refundMethod = value);
+                        }
                       },
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: reasonCtrl,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      labelText: 'Return reason *',
-                      hintText:
-                          'Damaged item, billing error, customer cancellation...',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    initialValue: refundMethod,
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                      labelText: 'Refund method',
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 'cash', child: Text('Cash')),
-                      DropdownMenuItem(value: 'upi', child: Text('UPI')),
-                      DropdownMenuItem(value: 'card', child: Text('Card')),
-                      DropdownMenuItem(
-                          value: 'bank', child: Text('Bank Transfer')),
-                    ],
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() => refundMethod = value);
-                      }
-                    },
-                  ),
-                ],
+                  ],
                 ),
               ),
               actions: [
@@ -952,6 +969,71 @@ class SalesReportPage extends ConsumerWidget {
     }
   }
 
+  Future<void> _shareInvoice(
+      BuildContext context, WidgetRef ref, SalesReportRow row) async {
+    try {
+      final storeId = ref.read(activeStoreIdProvider);
+      if (storeId == null || storeId.isEmpty) {
+        throw Exception('No active store.');
+      }
+      final fs = ref.read(firestoreProvider);
+      final itemSnap = await storeCollection(fs, storeId, 'sale_items')
+          .where('saleId', isEqualTo: row.saleId)
+          .get();
+      final saleItems = itemSnap.docs.map(saleItemFromDoc).toList()
+        ..sort((a, b) => a.id.compareTo(b.id));
+      final productSnap = await storeCollection(fs, storeId, 'products').get();
+      final productById = {
+        for (final d in productSnap.docs)
+          (int.tryParse(d.id) ?? 0): productFromDoc(d),
+      };
+      final branding = ref.read(invoiceBrandingProvider).valueOrNull ??
+          const InvoiceBranding.defaults();
+      final shopName = branding.displayName.isNotEmpty
+          ? branding.displayName
+          : (ref.read(storeSessionProvider)?.storeName ?? 'Pocket POS');
+      final printableItems = saleItems
+          .map(
+            (item) => (
+              description:
+                  '${productById[item.productId]?.name ?? 'Product #${item.productId}'} (GST ${item.taxPercent.toStringAsFixed(item.taxPercent % 1 == 0 ? 0 : 2)}%)',
+              unitPrice: item.unitPrice,
+              qty: item.quantity,
+              lineTotal: item.lineTotal,
+            ),
+          )
+          .toList(growable: false);
+      final subTotal = saleItems.fold<double>(
+          0, (sum, item) => sum + item.unitPrice * item.quantity);
+      final taxTotal = saleItems.fold<double>(
+          0,
+          (sum, item) =>
+              sum + item.unitPrice * item.quantity * item.taxPercent / 100);
+      final bytes = await ReceiptPdfService().generateClassicInvoice(
+        shopName: shopName,
+        invoiceNo: row.invoiceNo,
+        invoiceDate: row.soldAt,
+        customerName: '',
+        customerAddress: '',
+        branding: branding,
+        items: printableItems,
+        subTotal: subTotal,
+        total: row.grandTotal,
+        taxTotal: taxTotal > 0 ? taxTotal : null,
+      );
+      await sharePdfFile(
+        bytes: Uint8List.fromList(bytes),
+        fileName: '${row.invoiceNo}.pdf',
+        text: 'Invoice ${row.invoiceNo}',
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Share failed: $e')),
+      );
+    }
+  }
+
   Future<void> _printPdfInvoice({
     required String invoiceNo,
     required DateTime invoiceDate,
@@ -962,8 +1044,10 @@ class SalesReportPage extends ConsumerWidget {
   }) async {
     final subTotal = saleItems.fold<double>(
         0, (sum, item) => sum + (item.unitPrice * item.quantity));
-    final taxTotal = saleItems.fold<double>(0,
-        (sum, item) => sum + ((item.unitPrice * item.quantity * item.taxPercent) / 100));
+    final taxTotal = saleItems.fold<double>(
+        0,
+        (sum, item) =>
+            sum + ((item.unitPrice * item.quantity * item.taxPercent) / 100));
 
     final printableItems = saleItems
         .map(
