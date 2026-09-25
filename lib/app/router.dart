@@ -7,6 +7,7 @@ import '../features/auth/domain/auth_models.dart';
 import '../features/categories/presentation/category_page.dart';
 import '../features/customers/presentation/customer_details_page.dart';
 import '../features/customers/presentation/customer_invoice_detail_page.dart';
+import '../features/customers/presentation/customer_import_page.dart';
 import '../features/customers/presentation/customer_list_page.dart';
 import '../features/customers/presentation/customer_orders_page.dart';
 import '../core/di/providers.dart';
@@ -22,6 +23,7 @@ import '../features/purchases/presentation/purchase_page.dart';
 import '../features/ledger/presentation/credit_ledger_page.dart';
 import '../features/reports/presentation/sales_report_page.dart';
 import '../features/sales/presentation/quick_checkout_page.dart';
+import '../features/sales/presentation/sales_history_import_page.dart';
 import '../features/sales/presentation/pos_billing_page.dart';
 import '../features/expense/presentation/expense_page.dart';
 import '../features/staff/presentation/staff_page.dart';
@@ -127,6 +129,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
               path: '/product-import',
               builder: (context, state) => const ProductImportPage()),
+          GoRoute(
+              path: '/customer-import',
+              builder: (context, state) => const CustomerImportPage()),
+          GoRoute(
+              path: '/sales-history-import',
+              builder: (context, state) => const SalesHistoryImportPage()),
           GoRoute(
               path: '/inventory',
               builder: (context, state) => const InventoryPage()),

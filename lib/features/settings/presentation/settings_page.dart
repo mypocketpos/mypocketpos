@@ -109,6 +109,28 @@ class _ImportToolsCard extends StatelessWidget {
               trailing: const Icon(Icons.chevron_right_rounded),
               onTap: () => context.go('/purchase-import'),
             ),
+            const Divider(height: 1),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.people_alt_outlined),
+              title: const Text('Customer Import'),
+              subtitle: const Text(
+                'Download the customer template and upload customer records by mobile number.',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => context.go('/customer-import'),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.receipt_long_outlined),
+              title: const Text('Sales History Import'),
+              subtitle: const Text(
+                'Upload historical orders after importing customers and matching products.',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => context.go('/sales-history-import'),
+            ),
           ],
         ),
       ),
