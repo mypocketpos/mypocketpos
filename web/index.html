@@ -2,8 +2,8 @@
 <html lang="en">
 
 <head>
-  <!-- Google Tag Manager -->
-  <script>(function (w, d, s, l, i) {
+  <!-- Google Tag Manager (Deferred) -->
+  <script defer>(function (w, d, s, l, i) {
       w[l] = w[l] || []; w[l].push({
         'gtm.start':
           new Date().getTime(), event: 'gtm.js'
@@ -51,7 +51,9 @@
   <link rel="manifest" href="manifest.json">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Defer Google Fonts to avoid render-blocking -->
+  <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"></noscript>
 
   <!-- Preload Critical Visual Assets -->
   <link rel="preload" href="icons/logo-mark.svg" as="image" type="image/svg+xml">
@@ -152,7 +154,8 @@
     }
 
     html {
-      scroll-behavior: smooth
+      scroll-behavior: smooth;
+      font-display: swap;
     }
 
     body {
@@ -160,7 +163,8 @@
       color: var(--ink);
       background: var(--bg);
       line-height: 1.6;
-      -webkit-font-smoothing: antialiased
+      -webkit-font-smoothing: antialiased;
+      font-display: swap;
     }
 
     a {
@@ -1150,8 +1154,8 @@
     </footer>
   </div>
 
-  <!-- Lightweight Pricing Loader -->
-  <script src="subscriptions.js" defer></script>
+  <!-- Lightweight Pricing Loader (async) -->
+  <script src="subscriptions.js" async></script>
   <script>
     var appInitializing = false;
 
@@ -1173,9 +1177,11 @@
 
       var sqlScript = document.createElement('script');
       sqlScript.src = 'sqljs/sql-asm.js';
+      sqlScript.async = true;
       sqlScript.onload = function () {
         var flutterScript = document.createElement('script');
         flutterScript.src = 'flutter_bootstrap.js';
+        flutterScript.async = true;
         sqlScript.onerror = function () {
           // Hide loader if script fails to load
           if (loader) loader.style.display = 'none';
