@@ -52,8 +52,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <!-- Defer Google Fonts to avoid render-blocking -->
-  <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
-  <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"></noscript>
+  <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+    as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <noscript>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  </noscript>
 
   <!-- Preload Critical Visual Assets -->
   <link rel="preload" href="icons/logo-mark.svg" as="image" type="image/svg+xml">
@@ -914,9 +917,9 @@
     <header>
       <div class="wrap nav">
         <a class="logo" href="/" aria-label="MyPocketPOS home">
-  <img class="dot" src="icons/logo-mark.svg" alt="" width="30" height="30">
-  MyPocketPOS
-</a>
+          <img class="dot" src="icons/logo-mark.svg" alt="" width="30" height="30">
+          MyPocketPOS
+        </a>
         <button class="nav-toggle" id="navToggle" onclick="toggleNav()" aria-label="Menu" aria-expanded="false"
           aria-controls="navLinks">
           <span></span><span></span><span></span>
@@ -1149,15 +1152,16 @@
             Karnataka 560076 · <a href="tel:+918041246300">080-41246300</a> · <a
               href="mailto:info@mypocketpos.in">info@mypocketpos.in</a></span>
         </div>
-        <div><a href="/blog/">Blog</a> · <a href="/contact">Contact</a> · <a href="/privacy-policy.html">Privacy</a> · <a href="/terms-of-service.html">Terms</a> · <a href="/data-deletion.html">Data Deletion</a> · <a href="#" data-cta="login"
-            onclick="enterApp();return false;">Login</a> · <a href="#" data-cta="register"
+        <div><a href="/blog/">Blog</a> · <a href="/contact">Contact</a> · <a href="/privacy-policy.html">Privacy</a> ·
+          <a href="/terms-of-service.html">Terms</a> · <a href="/data-deletion.html">Data Deletion</a> · <a href="#"
+            data-cta="login" onclick="enterApp();return false;">Login</a> · <a href="#" data-cta="register"
             onclick="enterApp();return false;">Register</a></div>
       </div>
     </footer>
   </div>
 
-  <!-- Lightweight Pricing Loader (async) -->
-  <script src="subscriptions.js" async></script>
+  <!-- Lightweight Pricing Loader -->
+  <script src="subscriptions.js" defer></script>
   <script>
     var appInitializing = false;
 
