@@ -20,7 +20,7 @@ Include 2-3 relevant hashtags (e.g., #RetailTech, #POS, #KiranaBusiness) and a C
 """
 
 response = client.models.generate_content(
-    model="gemini-2.5-flash",
+    model="gemini-3.8-flash",
     contents=prompt
 )
 
