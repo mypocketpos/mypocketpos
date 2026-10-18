@@ -267,17 +267,22 @@ final cartSummaryProvider =
 
   for (final row in items) {
     // Round to 2 decimals at each step to prevent floating-point errors
-    final lineSub = double.parse((row.item.quantity * row.item.unitPrice).toStringAsFixed(2));
-    final itemDiscount = double.parse(row.item.discountAmount.toStringAsFixed(2));
+    final lineSub = double.parse(
+        (row.item.quantity * row.item.unitPrice).toStringAsFixed(2));
+    final itemDiscount =
+        double.parse(row.item.discountAmount.toStringAsFixed(2));
     final taxable = double.parse((lineSub - itemDiscount).toStringAsFixed(2));
-    final itemTax = double.parse((taxable * (row.item.taxPercent / 100)).toStringAsFixed(2));
+    final itemTax = double.parse(
+        (taxable * (row.item.taxPercent / 100)).toStringAsFixed(2));
 
     subTotal = double.parse((subTotal + lineSub).toStringAsFixed(2));
-    discountTotal = double.parse((discountTotal + itemDiscount).toStringAsFixed(2));
+    discountTotal =
+        double.parse((discountTotal + itemDiscount).toStringAsFixed(2));
     taxTotal = double.parse((taxTotal + itemTax).toStringAsFixed(2));
   }
 
-  final grandTotal = double.parse((subTotal - discountTotal + taxTotal).toStringAsFixed(2));
+  final grandTotal =
+      double.parse((subTotal - discountTotal + taxTotal).toStringAsFixed(2));
 
   return CartSummary(
     subTotal: subTotal,
@@ -353,6 +358,15 @@ final dashboardMetricsProvider = FutureProvider<DashboardMetrics>((ref) async {
   return _reportsRepo(ref).dashboard();
 });
 
+final upcomingExpiringProductsProvider =
+    StreamProvider<List<({String name, DateTime expiryDate, int daysLeft})>>(
+        (ref) {
+  if (ref.watch(activeStoreIdProvider) == null) {
+    return Stream.value(const []);
+  }
+  return _reportsRepo(ref).watchUpcomingExpiringProducts();
+});
+
 class SalesReportRow {
   const SalesReportRow({
     required this.saleId,
@@ -425,14 +439,42 @@ class SalesReportData {
   final List<SalesReportRow> rows;
 }
 
-final salesReportRangeProvider = StateProvider<DateTimeRange>((ref) {
+int _currentFinancialYearStartYear(int startMonth, {DateTime? now}) {
   final now = DateTime.now();
+  final normalizedStartMonth = startMonth.clamp(1, 12);
+  return now.month < normalizedStartMonth ? now.year - 1 : now.year;
+}
+
+DateTimeRange financialYearDateRange(
+  InvoiceBranding branding, {
+  DateTime? now,
+}) {
+  final effectiveNow = now ?? DateTime.now();
+  final startMonth = branding.financialYearStartMonth.clamp(1, 12);
+  final selectedStartYear = branding.selectedFinancialYearStartYear > 0
+      ? branding.selectedFinancialYearStartYear
+      : _currentFinancialYearStartYear(startMonth, now: effectiveNow);
+  final start = DateTime(selectedStartYear, startMonth, 1);
+  final end = DateTime(selectedStartYear + 1, startMonth, 1)
+      .subtract(const Duration(milliseconds: 1));
   return DateTimeRange(
-    start: DateTime(now.year, now.month, now.day)
-        .subtract(const Duration(days: 29)),
-    end: DateTime(now.year, now.month, now.day),
+    start: start,
+    end: end,
   );
+}
+
+final salesReportManualRangeProvider =
+    StateProvider<DateTimeRange?>((ref) => null);
+
+final salesReportRangeProvider = Provider<DateTimeRange>((ref) {
+  final manualRange = ref.watch(salesReportManualRangeProvider);
+  if (manualRange != null) return manualRange;
+  final branding = ref.watch(invoiceBrandingProvider).valueOrNull ??
+      const InvoiceBranding.defaults();
+  return financialYearDateRange(branding);
 });
+
+final salesReportVisibleRowsProvider = StateProvider<int>((ref) => 50);
 
 final salesReportProvider = FutureProvider<SalesReportData>((ref) async {
   final range = ref.watch(salesReportRangeProvider);
@@ -605,7 +647,8 @@ final platformStorefrontShoppingConfigNonBlockingProvider =
 
 final platformAnonymousShoppingEnabledProvider = Provider<bool>((ref) {
   // Use non-blocking provider - show button by default if config hasn't loaded
-  final cfgAsync = ref.watch(platformStorefrontShoppingConfigNonBlockingProvider);
+  final cfgAsync =
+      ref.watch(platformStorefrontShoppingConfigNonBlockingProvider);
   return cfgAsync.valueOrNull?.allowAnonymousShopping ?? true;
 });
 
@@ -637,4 +680,12 @@ final quickCheckoutConfigProvider = StreamProvider<QuickCheckoutConfig>((ref) {
 
 final quickCheckoutEnabledProvider = Provider<bool>((ref) {
   return ref.watch(quickCheckoutConfigProvider).valueOrNull?.enabled ?? false;
+});
+
+final quickInvoiceEnabledProvider = Provider<bool>((ref) {
+  return ref
+          .watch(quickCheckoutConfigProvider)
+          .valueOrNull
+          ?.quickInvoiceEnabled ??
+      false;
 });

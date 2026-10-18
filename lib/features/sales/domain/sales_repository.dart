@@ -27,6 +27,10 @@ class SaleReturnLineRequest {
 abstract class SalesRepository {
   Stream<List<Cart>> watchActiveCarts(int? posCounterId);
   Stream<List<CartItemWithProduct>> watchCartItems(int cartId);
+  Future<int> nextQuickCartTokenNumber({
+    required DateTime day,
+    required int startingNumber,
+  });
   Future<int> createCart(String name, {int? posCounterId, int? warehouseId});
   Future<int> createCartWithCustomer(String name, int customerId,
       {int? posCounterId, int? warehouseId});
