@@ -46,6 +46,14 @@
           }
         },
         {
+          "client_id": "1086638616306-tk1pb7qro34mhu9hfnhul860odrlp5fk.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mypocketpos.app",
+            "certificate_hash": "d04e917249e3611a3a21355e60318d66fe491353"
+          }
+        },
+        {
           "client_id": "1086638616306-ug6qjl15rep9v788r7rqvhf6t41hk6uf.apps.googleusercontent.com",
           "client_type": 3
         }

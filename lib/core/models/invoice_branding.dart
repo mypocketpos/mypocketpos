@@ -11,7 +11,9 @@ class InvoiceBranding {
     this.email = '',
     this.gstin = '',
     this.invoicePrefix = 'INV',
-    this.quickCartTokenStart = 100,
+    this.quickCartTokenStart = 1,
+    this.financialYearStartMonth = 4,
+    this.selectedFinancialYearStartYear = 0,
   });
 
   const InvoiceBranding.defaults()
@@ -21,7 +23,9 @@ class InvoiceBranding {
         email = '',
         gstin = '',
         invoicePrefix = 'INV',
-        quickCartTokenStart = 100;
+        quickCartTokenStart = 1,
+        financialYearStartMonth = 4,
+        selectedFinancialYearStartYear = 0;
 
   /// Store display name shown on the invoice header.
   /// Falls back to the registered store name when empty.
@@ -47,6 +51,12 @@ class InvoiceBranding {
   /// Used when no customer name/mobile is provided.
   final int quickCartTokenStart;
 
+  /// Month that starts the store's financial year. Defaults to April.
+  final int financialYearStartMonth;
+
+  /// Financial-year start year selected in settings. `0` means current year.
+  final int selectedFinancialYearStartYear;
+
   // ── Serialization ───────────────────────────────────────────────────────────
 
   static InvoiceBranding fromFirestoreMap(Map<String, dynamic>? map) {
@@ -55,9 +65,14 @@ class InvoiceBranding {
       final v = map[key];
       return (v is String) ? v.trim() : '';
     }
+
     int i(String key) {
       final v = map[key];
-      return (v is int) ? v : (v is num) ? v.toInt() : 100;
+      return (v is int)
+          ? v
+          : (v is num)
+              ? v.toInt()
+              : 1;
     }
 
     final prefix = s('invoicePrefix').toUpperCase();
@@ -69,6 +84,8 @@ class InvoiceBranding {
       gstin: s('gstin'),
       invoicePrefix: prefix.isEmpty ? 'INV' : prefix,
       quickCartTokenStart: i('quickCartTokenStart'),
+      financialYearStartMonth: i('financialYearStartMonth').clamp(1, 12),
+      selectedFinancialYearStartYear: i('selectedFinancialYearStartYear'),
     );
   }
 
@@ -82,6 +99,8 @@ class InvoiceBranding {
       'gstin': gstin,
       'invoicePrefix': prefix.isEmpty ? 'INV' : prefix,
       'quickCartTokenStart': quickCartTokenStart,
+      'financialYearStartMonth': financialYearStartMonth.clamp(1, 12),
+      'selectedFinancialYearStartYear': selectedFinancialYearStartYear,
     };
   }
 
@@ -93,6 +112,8 @@ class InvoiceBranding {
     String? gstin,
     String? invoicePrefix,
     int? quickCartTokenStart,
+    int? financialYearStartMonth,
+    int? selectedFinancialYearStartYear,
   }) {
     return InvoiceBranding(
       displayName: displayName ?? this.displayName,
@@ -102,6 +123,10 @@ class InvoiceBranding {
       gstin: gstin ?? this.gstin,
       invoicePrefix: invoicePrefix ?? this.invoicePrefix,
       quickCartTokenStart: quickCartTokenStart ?? this.quickCartTokenStart,
+      financialYearStartMonth:
+          financialYearStartMonth ?? this.financialYearStartMonth,
+      selectedFinancialYearStartYear:
+          selectedFinancialYearStartYear ?? this.selectedFinancialYearStartYear,
     );
   }
 }

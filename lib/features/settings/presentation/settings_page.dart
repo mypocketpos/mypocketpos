@@ -12,6 +12,7 @@ import '../../../core/models/invoice_branding.dart';
 import '../../../core/models/printer_config.dart';
 import '../../../core/models/quick_checkout_config.dart';
 import '../../../core/models/storefront_shopping_config.dart';
+import '../../../core/utilities/validators.dart';
 import '../../mill_run/domain/milling_config.dart';
 import '../../store/presentation/store_auth_controller.dart';
 import '../../subscription/presentation/store_subscription_status.dart';
@@ -39,6 +40,8 @@ class SettingsPage extends ConsumerWidget {
           const SizedBox(height: 16),
           _QuickCheckoutSettingsCard(),
           const SizedBox(height: 16),
+          _ImportToolsCard(),
+          const SizedBox(height: 16),
           _PrinterIntegrationCard(),
           const SizedBox(height: 16),
           _StorefrontShoppingCard(),
@@ -58,6 +61,83 @@ class SettingsPage extends ConsumerWidget {
   }
 }
 
+class _ImportToolsCard extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.upload_file_rounded, size: 20),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Import Tools',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Open dedicated CSV import screens from Settings. These tools are intentionally hidden from the main navigation menu.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 12),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.inventory_2_rounded),
+              title: const Text('Product Import'),
+              subtitle: const Text(
+                'Download the product template, export current products, and upload product CSV files.',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => context.go('/product-import'),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.shopping_bag_rounded),
+              title: const Text('Purchase Import'),
+              subtitle: const Text(
+                'Download the purchase template and upload purchase-entry CSV files with validation preview.',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => context.go('/purchase-import'),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.people_alt_outlined),
+              title: const Text('Customer Import'),
+              subtitle: const Text(
+                'Download the customer template and upload customer records by mobile number.',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => context.go('/customer-import'),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.receipt_long_outlined),
+              title: const Text('Sales History Import'),
+              subtitle: const Text(
+                'Upload historical orders after importing customers and matching products.',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => context.go('/sales-history-import'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // ── Shop Settings: Quick Checkout ───────────────────────────────────────────
 
 class _QuickCheckoutSettingsCard extends ConsumerStatefulWidget {
@@ -70,12 +150,14 @@ class _QuickCheckoutSettingsCardState
     extends ConsumerState<_QuickCheckoutSettingsCard> {
   bool _loaded = false;
   bool _enabled = false;
+  bool _quickInvoiceEnabled = false;
   bool _saving = false;
 
   void _loadOnce(QuickCheckoutConfig config) {
     if (_loaded) return;
     _loaded = true;
     _enabled = config.enabled;
+    _quickInvoiceEnabled = config.quickInvoiceEnabled;
   }
 
   Future<void> _save() async {
@@ -84,7 +166,10 @@ class _QuickCheckoutSettingsCardState
 
     setState(() => _saving = true);
     try {
-      final config = QuickCheckoutConfig(enabled: _enabled);
+      final config = QuickCheckoutConfig(
+        enabled: _enabled,
+        quickInvoiceEnabled: _quickInvoiceEnabled,
+      );
       await storeCollection(ref.read(firestoreProvider), storeId, 'settings')
           .doc('shop_settings')
           .set(config.toFirestoreMap(), SetOptions(merge: true));
@@ -155,6 +240,16 @@ class _QuickCheckoutSettingsCardState
               ),
               value: _enabled,
               onChanged: (v) => setState(() => _enabled = v),
+            ),
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Enable Quick Invoice Creation'),
+              subtitle: const Text(
+                'Shows a Quick Invoice screen in navigation for creating, saving, and printing simple invoices.',
+                style: TextStyle(fontSize: 12),
+              ),
+              value: _quickInvoiceEnabled,
+              onChanged: (v) => setState(() => _quickInvoiceEnabled = v),
             ),
           ],
         ),
@@ -1002,6 +1097,8 @@ class _InvoiceBrandingCardState extends ConsumerState<_InvoiceBrandingCard> {
   final _gstinCtrl = TextEditingController();
   final _prefixCtrl = TextEditingController();
   final _tokenStartCtrl = TextEditingController();
+  int _financialYearStartMonth = 4;
+  int _selectedFinancialYearStartYear = 0;
 
   bool _loaded = false;
   bool _saving = false;
@@ -1028,11 +1125,33 @@ class _InvoiceBrandingCardState extends ConsumerState<_InvoiceBrandingCard> {
     _gstinCtrl.text = b.gstin;
     _prefixCtrl.text = b.invoicePrefix;
     _tokenStartCtrl.text = b.quickCartTokenStart.toString();
+    _financialYearStartMonth = b.financialYearStartMonth;
+    _selectedFinancialYearStartYear = b.selectedFinancialYearStartYear > 0
+        ? b.selectedFinancialYearStartYear
+        : _currentFinancialYearStartYear(b.financialYearStartMonth);
+  }
+
+  int _currentFinancialYearStartYear(int startMonth) {
+    final now = DateTime.now();
+    return now.month < startMonth ? now.year - 1 : now.year;
+  }
+
+  String _financialYearLabel(int startYear) {
+    final endYear = (startYear + 1) % 100;
+    return '$startYear-${endYear.toString().padLeft(2, '0')}';
   }
 
   Future<void> _save() async {
     final storeId = ref.read(activeStoreIdProvider);
     if (storeId == null) return;
+
+    final phoneError = validateMobile(_phoneCtrl.text);
+    if (phoneError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(phoneError)),
+      );
+      return;
+    }
 
     final prefix = _prefixCtrl.text.trim().toUpperCase();
     if (prefix.isEmpty || prefix.length > 8) {
@@ -1045,7 +1164,7 @@ class _InvoiceBrandingCardState extends ConsumerState<_InvoiceBrandingCard> {
 
     setState(() => _saving = true);
     try {
-      final tokenStart = int.tryParse(_tokenStartCtrl.text.trim()) ?? 100;
+      final tokenStart = int.tryParse(_tokenStartCtrl.text.trim()) ?? 1;
       final branding = InvoiceBranding(
         displayName: _displayNameCtrl.text.trim(),
         address: _addressCtrl.text.trim(),
@@ -1054,10 +1173,14 @@ class _InvoiceBrandingCardState extends ConsumerState<_InvoiceBrandingCard> {
         gstin: _gstinCtrl.text.trim(),
         invoicePrefix: prefix,
         quickCartTokenStart: tokenStart.clamp(1, 999999),
+        financialYearStartMonth: _financialYearStartMonth,
+        selectedFinancialYearStartYear: _selectedFinancialYearStartYear,
       );
       await storeCollection(ref.read(firestoreProvider), storeId, 'settings')
           .doc('invoice_branding')
           .set(branding.toFirestoreMap());
+      ref.invalidate(salesReportProvider);
+      ref.read(salesReportManualRangeProvider.notifier).state = null;
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Invoice branding saved.')),
@@ -1201,11 +1324,90 @@ class _InvoiceBrandingCardState extends ConsumerState<_InvoiceBrandingCard> {
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
                 labelText: 'Quick Cart Token Start Number',
-                hintText: '100',
-                helperText: 'Starting number for token-based carts (e.g., 100, 101, 102...)',
+                hintText: '1',
+                helperText:
+                    'Starting number for token-based carts (e.g., 100, 101, 102...)',
                 border: OutlineInputBorder(),
                 isDense: true,
               ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<int>(
+                    initialValue: _financialYearStartMonth,
+                    decoration: const InputDecoration(
+                      labelText: 'Financial Year Start Month',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 1, child: Text('January')),
+                      DropdownMenuItem(value: 2, child: Text('February')),
+                      DropdownMenuItem(value: 3, child: Text('March')),
+                      DropdownMenuItem(value: 4, child: Text('April')),
+                      DropdownMenuItem(value: 5, child: Text('May')),
+                      DropdownMenuItem(value: 6, child: Text('June')),
+                      DropdownMenuItem(value: 7, child: Text('July')),
+                      DropdownMenuItem(value: 8, child: Text('August')),
+                      DropdownMenuItem(value: 9, child: Text('September')),
+                      DropdownMenuItem(value: 10, child: Text('October')),
+                      DropdownMenuItem(value: 11, child: Text('November')),
+                      DropdownMenuItem(value: 12, child: Text('December')),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() {
+                        _financialYearStartMonth = value;
+                        if (_selectedFinancialYearStartYear <= 0) {
+                          _selectedFinancialYearStartYear =
+                              _currentFinancialYearStartYear(value);
+                        }
+                      });
+                    },
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: DropdownButtonFormField<int>(
+                    initialValue: () {
+                      final baseYear = _currentFinancialYearStartYear(
+                          _financialYearStartMonth);
+                      if (_selectedFinancialYearStartYear >= baseYear - 2 &&
+                          _selectedFinancialYearStartYear <= baseYear + 2) {
+                        return _selectedFinancialYearStartYear;
+                      }
+                      return baseYear;
+                    }(),
+                    decoration: const InputDecoration(
+                      labelText: 'Financial Year',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    items: [
+                      for (int year = _currentFinancialYearStartYear(
+                                _financialYearStartMonth,
+                              ) -
+                              2;
+                          year <=
+                              _currentFinancialYearStartYear(
+                                    _financialYearStartMonth,
+                                  ) +
+                                  2;
+                          year++)
+                        DropdownMenuItem(
+                          value: year,
+                          child: Text(_financialYearLabel(year)),
+                        ),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() => _selectedFinancialYearStartYear = value);
+                    },
+                  ),
+                ),
+              ],
             ),
           ],
         ),
